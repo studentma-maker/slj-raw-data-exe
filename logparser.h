@@ -90,6 +90,8 @@ struct Piece {
     // 横轴坐标：每个 tick 相对本片第一个 tick 的累计皮带脉冲数（= 物料前进距离），单调不减；
     // 下位机计数复位造成的回跳/跳变按 0 增量处理
     QVector<double> xs;
+    int    laserHeadTick = -1;   // 第一个 posLaser>=0 的 tick（料头到激光）
+    int    laserTailTick = -1;   // 最后一个 posLaser>=0 的 tick（料尾过激光，之后是 PIECE_DONE）
     double mmPerPulse = 0.0;   // 由 posLaser 与脉冲的对应关系估算的 mm/脉冲，估不出为 0
 
     QVector<Tick>     ticks;

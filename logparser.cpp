@@ -198,6 +198,8 @@ void finalizeDistance(Piece &p)
         if (a < 0) a = i;
         b = i;
     }
+    p.laserHeadTick = a;
+    p.laserTailTick = b;
     if (a >= 0 && b > a && p.xs[b] - p.xs[a] > 100.0) {
         const double k = ((double)tk[b].posLaser - (double)tk[a].posLaser) / (p.xs[b] - p.xs[a]);
         if (k > 1e-5 && k < 1.0) p.mmPerPulse = k;

@@ -80,6 +80,9 @@ Range niceRange(double lo, double hi, bool fromZero)
     return r;
 }
 
+double fltThickAt(const Piece &p, const Tick &t);
+double rawThickAt(const Piece &p, const Tick &t);
+
 Ranges computeRanges(const Piece &p)
 {
     Ranges rg;
@@ -95,7 +98,7 @@ Ranges computeRanges(const Piece &p)
         lasMax = raw[(int)((raw.size() - 1) * 0.995)];
     }
     for (const Tick &t : p.ticks) {
-        thkMax = std::max(thkMax, (double)t.thick);
+        thkMax = std::max(thkMax, fltThickAt(p, t));
         lasMin = std::min(lasMin, (double)t.lflt);
         lasMax = std::max(lasMax, (double)t.lflt);
         freqMax = std::max(freqMax, (double)t.freq);
@@ -105,7 +108,7 @@ Ranges computeRanges(const Piece &p)
     if (p.baseMm >= 0 && !raw.isEmpty()) {
         QVector<float> rt;
         for (const Tick &t : p.ticks)
-            if (t.posLaser >= 0.0f) rt.append((float)p.baseMm - t.lraw);
+            if (!std::isnan(rawThickAt(p, t))) rt.append((float)p.baseMm - t.lraw);
         if (!rt.isEmpty()) {
             std::sort(rt.begin(), rt.end());
             thkMax = std::max(thkMax, (double)rt[(int)((rt.size() - 1) * 0.995)]);
@@ -145,6 +148,50 @@ QColor eventColor(int kind)
     case EvAlarm:       return QColor("#e03131");
     default:            return QColor("#212529");
     }
+}
+
+// 厚度两条曲线的取值：从第一行 TICK（ch1 上升沿）起全程绘制。
+// 新版采集程序的 TICK.thick 全程都是真实读数；旧日志在料头到激光之前、料尾过激光
+// (PIECE_DONE)之后该列写死 0，这里按同一公式 base − lflt（钳位 0~10mm）补算，
+// 两种日志画出来一致。基线未知（本片没有 BASELINE 行）时只能按日志原值画
+double fltThickAt(const Piece &p, const Tick &t)
+{
+    const int i = int(&t - p.ticks.constData());
+    const bool onMaterial = p.laserHeadTick >= 0 && i >= p.laserHeadTick && i <= p.laserTailTick;
+    if (!onMaterial && t.posLaser < 0.0f && t.thick == 0.0f && p.baseMm >= 0)
+        return std::min(10.0, std::max(0.0, p.baseMm - (double)t.lflt));
+    return (double)t.thick;
+}
+double rawThickAt(const Piece &p, const Tick &t)
+{
+    if (p.baseMm < 0) return std::numeric_limits<double>::quiet_NaN();
+    return p.baseMm - (double)t.lraw;
+}
+
+// PIECE_DONE(料尾过激光)：始终标在厚度面板上，之后的区段加浅灰底表示“激光下已无本片物料”
+void drawPieceDone(QPainter &g, const PieceChart::Geom &gm, const Piece &p, double x)
+{
+    const QRectF &r = gm.panel[PieceChart::PanelThick];
+    if (x > gm.plotRight) return;
+    const double xa = std::max(x, gm.plotLeft);
+    g.fillRect(QRectF(xa, r.top(), gm.plotRight - xa, r.height()), QColor(134, 142, 150, 28));
+    if (x < gm.plotLeft) return;
+    g.setPen(QPen(QColor("#212529"), 1.8));
+    g.drawLine(QPointF(x, gm.top), QPointF(x, gm.bottom));
+    const QString txt = p.lenMm >= 0 ? QStringLiteral("PIECE_DONE 料尾过激光 · 发料长度 %1 mm").arg(p.lenMm, 0, 'f', 1)
+                                     : QStringLiteral("PIECE_DONE 料尾过激光");
+    QFont f = g.font();
+    f.setPixelSize(11);
+    f.setBold(true);
+    g.setFont(f);
+    const double tw = QFontMetricsF(f).horizontalAdvance(txt) + 14;
+    QRectF box(x + 6, r.bottom() - 26, tw, 20);
+    if (box.right() > gm.plotRight - 2) box.moveRight(x - 6);
+    g.setPen(Qt::NoPen);
+    g.setBrush(QColor("#212529"));
+    g.drawRoundedRect(box, 3, 3);
+    g.setPen(Qt::white);
+    g.drawText(box, Qt::AlignCenter, txt);
 }
 
 // 把绘制所需的坐标换算集中在一处。横轴值 = 累计皮带脉冲(Piece::xs)
@@ -492,7 +539,7 @@ void drawAlarms(QPainter &g, const Mapper &m, const Range &thickRange)
         // 曲线上的标记点：报警时刻最近一个 tick 的厚度
         const int ti = m.nearestTick(val);
         if (ti >= 0) {
-            double y = Mapper::yOf(r, thickRange, m.p.ticks[ti].thick);
+            double y = Mapper::yOf(r, thickRange, fltThickAt(m.p, m.p.ticks[ti]));
             y = std::min(r.bottom() - 5, std::max(r.top() + 5, y));
             g.setPen(QPen(Qt::white, 1.5));
             g.setBrush(red);
@@ -726,9 +773,9 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
                  .arg(m.p.mmPerPulse > 0 ? QStringLiteral(" ≈ %1 mm").arg(m.p.xs[ti] * m.p.mmPerPulse, 0, 'f', 1)
                                          : QString())
                  .arg(m.tOf(t.ms), 0, 'f', 3).arg(fmtClock(t.ms));
-    lines << QStringLiteral("thick(滤波后) = %1 mm%2").arg(t.thick, 0, 'f', 3)
-                 .arg(m.p.baseMm >= 0 && t.posLaser >= 0.0f
-                          ? QStringLiteral("   原始 = %1 mm").arg(m.p.baseMm - t.lraw, 0, 'f', 3) : QString());
+    const double rawThk = rawThickAt(m.p, t);
+    lines << QStringLiteral("thick(滤波后) = %1 mm%2").arg(fltThickAt(m.p, t), 0, 'f', 3)
+                 .arg(std::isnan(rawThk) ? QString() : QStringLiteral("   原始 = %1 mm").arg(rawThk, 0, 'f', 3));
     lines << QString("lflt = %1   lraw = %2 mm").arg(t.lflt, 0, 'f', 2).arg(t.lraw, 0, 'f', 2);
     lines << QString("posLaser = %1 mm").arg(t.posLaser, 0, 'f', 1);
     lines << QString("freq = %1 Hz   row = %2   state = %3").arg(t.freq, 0, 'f', 1).arg(t.row)
@@ -847,14 +894,14 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     drawPanelFrame(g, m, gm.panel[PanelThick], r[PanelThick], QStringLiteral("厚度 mm"), kColThick, xStep);
     const bool hasRawThick = p.baseMm >= 0;
     if (v.showRaw && hasRawThick) {
-        const double base = p.baseMm;
-        drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColRaw, 1.0), [base](const Tick &t) {
-            return t.posLaser < 0.0f ? std::numeric_limits<double>::quiet_NaN() : base - (double)t.lraw;
-        });
+        drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColRaw, 1.0),
+                   [&p](const Tick &t) { return rawThickAt(p, t); });
     }
     if (v.showFlt)
         drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColThick, 1.4),
-                   [](const Tick &t) { return (double)t.thick; });
+                   [&p](const Tick &t) { return fltThickAt(p, t); });
+    for (const LogEvent &e : p.events)
+        if (e.kind == EvPieceDone) drawPieceDone(g, gm, p, m.xOfMs(e.ms));
 
     // ── 激光读数 ──
     drawPanelFrame(g, m, gm.panel[PanelLaser], r[PanelLaser], QStringLiteral("激光 mm"), kColFlt, xStep);
