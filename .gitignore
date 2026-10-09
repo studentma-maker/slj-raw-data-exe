@@ -1,0 +1,9 @@
+build/
+build-*/
+*.pro.user*
+Makefile*
+*.o
+moc_*
+debug/
+release/
+.qmake.stash
