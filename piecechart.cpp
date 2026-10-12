@@ -20,7 +20,8 @@ const double kLaneH    = 12.0;
 const double kDigRowH  = 14.0;
 const double kStateH   = 18.0;
 const double kRowBandH = 16.0;
-const double kGap      = 8.0;
+const double kGap      = 20.0;    // 面板间距：同时容纳下一面板的图例行
+const double kLegendH  = 16.0;
 const double kWeights[PieceChart::PanelCount] = {3.0, 1.3, 1.3, 1.3};
 
 const QColor kColThick("#1c7ed6");
@@ -118,7 +119,8 @@ Ranges computeRanges(const Piece &p)
     if (lasMin > lasMax) { lasMin = 0.0; lasMax = 1.0; }
     rg.left[PieceChart::PanelThick] = niceRange(0.0, thkMax, true);
     rg.left[PieceChart::PanelLaser] = niceRange(lasMin, lasMax, false);
-    rg.left[PieceChart::PanelFreq]  = niceRange(0.0, freqMax, true);
+    // 变频器上限 50Hz：量程固定 0~50，个别超出时才按数据放大
+    rg.left[PieceChart::PanelFreq]  = freqMax <= 50.0 ? Range{0.0, 50.0} : niceRange(0.0, freqMax, true);
     rg.left[PieceChart::PanelPos]   = niceRange(0.0, posMax, true);
     rg.time = niceRange(0.0, std::max(1.0, (double)(p.endMs - p.startMs) / 1000.0), true);
     return rg;
@@ -353,16 +355,16 @@ void drawRightAxis(QPainter &g, const QRectF &r, const Range &rg, const QString 
     g.restore();
 }
 
-// 面板左上角的图例：{颜色, 文字} 依次排开
+// 图例画在面板边框上方的空隙里（不在绘图区内），任何量程下都不会挡住曲线
 void drawLegend(QPainter &g, const QRectF &r, const QVector<QPair<QColor, QString>> &items)
 {
     g.setFont(fontPx(g, 11));
     const QFontMetricsF fm(g.font());
     double x = r.left() + 8;
-    const double y = r.top() + 11;
+    const double y = r.top() - kLegendH / 2 - 1;
     for (const auto &it : items) {
         const double w = fm.horizontalAdvance(it.second);
-        g.fillRect(QRectF(x - 3, y - 8, w + 28, 16), QColor(255, 255, 255, 215));
+        g.fillRect(QRectF(x - 3, y - 7, w + 28, 14), Qt::white);
         g.setPen(QPen(it.first, 2.0));
         g.drawLine(QPointF(x, y), QPointF(x + 16, y));
         g.setPen(kColText);
@@ -863,7 +865,7 @@ PieceChart::Geom PieceChart::geometry(const QRectF &rect, const Piece &p, const 
     double y = rect.top() + kTitleH;
     const double evH = v.showEvents ? kEventRows * kEventRowH + 2 : 4;
     gm.events = QRectF(gm.plotLeft, y, w, evH);
-    y += evH;
+    y += evH + kLegendH;   // 第一个面板的图例行
 
     const double ganttH = (v.showWin && !p.wins.isEmpty()) ? p.winLanes * kLaneH + 6 : 0.0;
     const double digitalH = 4 * kDigRowH + kStateH + kRowBandH;
