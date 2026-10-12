@@ -20,7 +20,8 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
-    bool loadFile(const QString &path);
+    // quiet：失败时不弹对话框，只把原因写到 errorOut（批处理模式用，弹窗会卡住无人值守的进程）
+    bool loadFile(const QString &path, bool quiet = false, QString *errorOut = nullptr);
     // 不经过对话框直接导出，供菜单动作和命令行自检共用
     bool exportReportPdf(const QString &path);
     bool exportCurrentPdf(const QString &path);

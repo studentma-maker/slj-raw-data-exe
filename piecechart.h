@@ -19,6 +19,7 @@ public:
         bool   showEvents = true;
         bool   showRaw    = true;             // 原始曲线：base−lraw 厚度、lraw 激光
         bool   showFlt    = true;             // 滤波后曲线：thick 厚度、lflt 激光
+        bool   alignFreq  = true;             // 频率曲线前移“激光→针脚”距离，使同一横坐标=同一段物料
         View() { for (auto &r : y) { r[0] = 0.0; r[1] = 1.0; } }
     };
 
@@ -29,6 +30,8 @@ public:
         double top = 0.0, bottom = 0.0;       // 事件竖线的纵向范围
     };
 
+    // 激光→针脚 距离折算成的脉冲数（频率对齐用）；参数或 mm/脉冲 未知时为 0
+    static double needleShift(const Piece &p, const HeaderInfo *hdr);
     static double minXSpan(const Piece &p);
     static void   fullXRange(const Piece &p, double &x0, double &x1);
     static void   resetView(const Piece &p, View &v);

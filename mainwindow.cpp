@@ -106,6 +106,10 @@ void MainWindow::buildUi()
     cbFlt->setStyleSheet("color:#1c7ed6;font-weight:bold");
     for (QCheckBox *cb : {cbWin, cbEv, cbRaw, cbFlt}) cb->setChecked(true);
     connect(cbFlt, &QCheckBox::toggled, m_plot, &PlotWidget::setShowFlt);
+    auto *cbAlign = new QCheckBox(QStringLiteral("频率对齐到针脚"));
+    cbAlign->setChecked(true);
+    cbAlign->setToolTip(QStringLiteral("把频率曲线前移“激光→针脚”距离：同一横坐标 = 同一段物料的厚度和它被缝时的频率"));
+    connect(cbAlign, &QCheckBox::toggled, m_plot, &PlotWidget::setAlignFreq);
     connect(cbWin, &QCheckBox::toggled, m_plot, &PlotWidget::setShowWin);
     connect(cbEv, &QCheckBox::toggled, m_plot, &PlotWidget::setShowEvents);
     connect(cbRaw, &QCheckBox::toggled, m_plot, &PlotWidget::setShowRaw);
@@ -120,6 +124,7 @@ void MainWindow::buildUi()
     bar->addWidget(btnReset);
     bar->addWidget(cbRaw);
     bar->addWidget(cbFlt);
+    bar->addWidget(cbAlign);
     bar->addWidget(cbWin);
     bar->addWidget(cbEv);
     bar->addSpacing(12);
@@ -194,7 +199,7 @@ void MainWindow::onOpen()
     if (!path.isEmpty()) loadFile(path);
 }
 
-bool MainWindow::loadFile(const QString &path)
+bool MainWindow::loadFile(const QString &path, bool quiet, QString *errorOut)
 {
     LogData data;
     QString err;
@@ -202,6 +207,8 @@ bool MainWindow::loadFile(const QString &path)
     const bool ok = parseLogFile(path, data, &err);
     QApplication::restoreOverrideCursor();
     if (!ok) {
+        if (errorOut) *errorOut = err;
+        if (quiet) return false;
         QMessageBox::warning(this, QStringLiteral("无法解析"),
                              QStringLiteral("%1\n\n%2").arg(path, err));
         return false;
@@ -434,6 +441,7 @@ bool MainWindow::exportReportPdf(const QString &path)
     view.showEvents = m_plot->view().showEvents;
     view.showRaw    = m_plot->view().showRaw;
     view.showFlt    = m_plot->view().showFlt;
+    view.alignFreq  = m_plot->view().alignFreq;
 
     for (int i = 0; i < m_data.headers.size(); ++i) {
         const HeaderInfo &h = m_data.headers[i];

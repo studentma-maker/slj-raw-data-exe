@@ -248,10 +248,13 @@ struct Mapper {
 };
 
 template <typename Fn>
-void drawSeries(QPainter &g, const Mapper &m, const QRectF &r, const Range &rg, const QPen &pen, Fn value)
+void drawSeries(QPainter &g, const Mapper &m, const QRectF &r, const Range &rg, const QPen &pen, Fn value,
+                double xShift = 0.0)
 {
     int i0, i1;
     m.visibleTicks(i0, i1);
+    // 整条曲线沿横轴平移时可见区间也跟着变，直接全量画，交给裁剪
+    if (xShift != 0.0) { i0 = 0; i1 = m.p.ticks.size() - 1; }
     if (i1 < i0) return;
     g.save();
     g.setClipRect(r);
@@ -266,7 +269,7 @@ void drawSeries(QPainter &g, const Mapper &m, const QRectF &r, const Range &rg, 
             poly.clear();
             continue;
         }
-        poly << QPointF(m.xOfV(m.p.xs[i]), Mapper::yOf(r, rg, val));
+        poly << QPointF(m.xOfV(m.p.xs[i] - xShift), Mapper::yOf(r, rg, val));
     }
     if (poly.size() > 1) g.drawPolyline(poly);
     g.restore();
@@ -755,7 +758,7 @@ void drawDigital(QPainter &g, const Mapper &m)
                QStringLiteral("row"));
 }
 
-void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &pos)
+void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &pos, double freqShift)
 {
     if (pos.x() < m.gm.plotLeft || pos.x() > m.gm.plotRight || pos.y() < m.gm.events.top() || pos.y() > m.gm.bottom)
         return;
@@ -778,8 +781,17 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
                  .arg(std::isnan(rawThk) ? QString() : QStringLiteral("   原始 = %1 mm").arg(rawThk, 0, 'f', 3));
     lines << QString("lflt = %1   lraw = %2 mm").arg(t.lflt, 0, 'f', 2).arg(t.lraw, 0, 'f', 2);
     lines << QString("posLaser = %1 mm").arg(t.posLaser, 0, 'f', 1);
-    lines << QString("freq = %1 Hz   row = %2   state = %3").arg(t.freq, 0, 'f', 1).arg(t.row)
-                 .arg(QString::fromLatin1(sewStateName(t.state)));
+    QString needleFreq;
+    if (freqShift > 0.0) {
+        // 这段物料走到针脚时的频率：往后找皮带多走了 freqShift 的那个 tick
+        const QVector<double> &xs = m.p.xs;
+        const double target = xs[ti] + freqShift;
+        needleFreq = target <= xs.last()
+                         ? QStringLiteral("   到针脚时 freq = %1 Hz").arg(m.p.ticks[m.nearestTick(target)].freq, 0, 'f', 1)
+                         : QStringLiteral("   到针脚时 freq = 无数据");
+    }
+    lines << QStringLiteral("此刻 freq = %1 Hz   row = %2   state = %3%4").arg(t.freq, 0, 'f', 1).arg(t.row)
+                 .arg(QString::fromLatin1(sewStateName(t.state)), needleFreq);
     lines << QString("ch1/ch2/ch3 = %1/%2/%3   vfd = %4").arg(t.ch1).arg(t.ch2).arg(t.ch3).arg(t.vfd);
     lines << QString("pulse = %1").arg(t.pulse);
     // 光标附近的事件：给出原始日志内容
@@ -815,6 +827,12 @@ QColor PieceChart::rowColor(int row)
                                     "#82c91e", "#fab005", "#fd7e14", "#fa5252", "#be4bdb"};
     const int n = (int)(sizeof(c) / sizeof(c[0]));
     return QColor(c[((row % n) + n) % n]);
+}
+
+double PieceChart::needleShift(const Piece &p, const HeaderInfo *hdr)
+{
+    if (!hdr || p.mmPerPulse <= 0.0) return 0.0;
+    return (hdr->laserToCh2 + hdr->ch2ToNeedle) / p.mmPerPulse;
 }
 
 double PieceChart::minXSpan(const Piece &p)
@@ -914,8 +932,11 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
 
     // ── 变频器频率 ──
     drawPanelFrame(g, m, gm.panel[PanelFreq], r[PanelFreq], QStringLiteral("频率 Hz"), kColFreq, xStep);
+    // 厚度是在激光处测的，这段物料要再走“激光→针脚”才被缝到。把频率曲线前移这段距离后，
+    // 同一横坐标上：上面是这段物料的厚度，这里是它到针脚时缝纫机的频率
+    const double shift = v.alignFreq ? needleShift(p, hdr) : 0.0;
     drawSeries(g, m, gm.panel[PanelFreq], r[PanelFreq], QPen(kColFreq, 1.3),
-               [](const Tick &t) { return (double)t.freq; });
+               [](const Tick &t) { return (double)t.freq; }, shift);
 
     // ── 片内位移 + 时间(右轴)：时间曲线越陡 = 皮带越慢 ──
     drawPanelFrame(g, m, gm.panel[PanelPos], r[PanelPos], QStringLiteral("posLaser mm"), kColPos, xStep);
@@ -944,7 +965,11 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     if (v.showFlt) lgLaser.append(qMakePair(kColFlt, QStringLiteral("lflt 滤波后")));
     if (v.showRaw) lgLaser.append(qMakePair(kColRaw, QStringLiteral("lraw 原始")));
     drawLegend(g, gm.panel[PanelLaser], lgLaser);
-    drawLegend(g, gm.panel[PanelFreq], {qMakePair(kColFreq, QStringLiteral("freq 变频器当前频率"))});
+    drawLegend(g, gm.panel[PanelFreq],
+               {qMakePair(kColFreq, shift > 0
+                              ? QStringLiteral("freq 变频器频率 — 已前移 %1 mm(激光→针脚)，与上方同一横坐标处物料的厚度对应")
+                                    .arg(hdr->laserToCh2 + hdr->ch2ToNeedle, 0, 'f', 1)
+                              : QStringLiteral("freq 变频器当前频率(未对齐，按采样时刻的皮带位置)"))});
     drawLegend(g, gm.panel[PanelPos], {qMakePair(kColPos, QStringLiteral("posLaser 料头过激光后的位移")),
                                        qMakePair(kColTime, QStringLiteral("经过时间(右轴)"))});
 
@@ -956,6 +981,6 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
         g.drawText(gm.panel[PanelThick], Qt::AlignCenter, QStringLiteral("本片没有 TICK 数据"));
     }
 
-    if (hover) drawHover(g, m, rect, *hover);
+    if (hover) drawHover(g, m, rect, *hover, shift);
     g.restore();
 }

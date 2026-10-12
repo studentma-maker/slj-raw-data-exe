@@ -2,6 +2,8 @@
 
 #include <QApplication>
 
+#include <cstdio>
+
 int main(int argc, char *argv[])
 {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -16,7 +18,11 @@ int main(int argc, char *argv[])
     // 批处理：SewingLogViewer <sewing.log> --pdf <report.pdf>  不显示窗口，直接导出完整报告
     const int pdfAt = args.indexOf(QStringLiteral("--pdf"));
     if (pdfAt > 1 && pdfAt + 1 < args.size()) {
-        if (!w.loadFile(args.at(1))) return 1;
+        QString err;
+        if (!w.loadFile(args.at(1), true, &err)) {
+            fprintf(stderr, "%s: %s\n", qPrintable(args.at(1)), qPrintable(err));
+            return 1;
+        }
         return w.exportReportPdf(args.at(pdfAt + 1)) ? 0 : 2;
     }
 
