@@ -336,6 +336,17 @@ bool parseLogFile(const QString &path, LogData &out, QString *error)
         } else if (type == "EDGE") {
             const auto kv = keyValues(rest);
             const QByteArray ev = kv.value("ev");
+            if (ev == "CH4_RISE" || ev == "CH4_FALL") {
+                // 皮带零点标记：单独存，不进事件线（每圈两条，混在事件里太密）
+                BeltMark mk;
+                mk.ms     = ms;
+                mk.pulse  = kv.value("pulse").toUInt();
+                mk.rise   = (ev == "CH4_RISE");
+                mk.dPulse = kv.contains("dPulse") ? kv.value("dPulse").toLongLong() : -1;
+                mk.detail = QString::fromLatin1(body);
+                for (int idx : open) out.pieces[idx].marks.append(mk);
+                continue;
+            }
             if (ev == "CH1_RISE") {
                 Piece p;
                 p.startMs = ms;

@@ -35,6 +35,7 @@ const QColor kColGrid("#e9ecef");
 const QColor kColFrame("#868e96");
 const QColor kColText("#212529");
 const QColor kColSubText("#495057");
+const QColor kColMark("#1098ad");   // ch4 皮带零点标记
 
 struct Range { double lo = 0.0, hi = 1.0; };
 struct Ranges {
@@ -225,6 +226,19 @@ struct Mapper {
         return p.xs[i - 1] + (p.xs[i] - p.xs[i - 1]) * (double)(ms - t0) / (double)(t1 - t0);
     }
     double xOfMs(qint64 ms) const { return xOfV(vAtMs(ms)); }
+    // ch4 皮带零点边沿 → 横轴值：先按时间找到边沿前最后一个 tick，再用 EDGE 行的 pulse
+    // （已折算回真实跳变时刻）与该 tick 的脉冲差精确定位；脉冲对不上时退回按时间插值
+    double vAtMark(const BeltMark &mk) const
+    {
+        const QVector<Tick> &tk = p.ticks;
+        if (tk.isEmpty()) return 0.0;
+        auto it = std::upper_bound(tk.begin(), tk.end(), mk.ms, [](qint64 m, const Tick &t) { return m < t.ms; });
+        int i = std::max(0, int(it - tk.begin()) - 1);
+        while (i > 0 && (qint32)(mk.pulse - tk[i].pulse) < 0) --i;
+        const qint32 d = (qint32)(mk.pulse - tk[i].pulse);
+        if (d < 0 || d > 100000) return vAtMs(mk.ms);
+        return p.xs[i] + d;
+    }
     static double yOf(const QRectF &r, const Range &rg, double val)
     {
         return r.bottom() - (val - rg.lo) / (rg.hi - rg.lo) * r.height();
@@ -578,6 +592,90 @@ void drawAlarms(QPainter &g, const Mapper &m, const Range &thickRange)
     }
 }
 
+// ch4 皮带零点：相邻两次上升沿之间是皮带一整圈，隔圈给面板加浅底色（画在曲线之下）
+void drawMarkBands(QPainter &g, const Mapper &m, const QRectF &r)
+{
+    int k = 0;
+    double prev = std::numeric_limits<double>::quiet_NaN();
+    for (const BeltMark &b : m.p.marks) {
+        if (!b.rise) continue;
+        const double v = m.vAtMark(b);
+        if (!std::isnan(prev) && (k % 2 == 0)) {
+            const double xa = std::max(m.xOfV(prev), r.left());
+            const double xb = std::min(m.xOfV(v), r.right());
+            if (xb > xa) g.fillRect(QRectF(xa, r.top(), xb - xa, r.height()), QColor(16, 152, 173, 22));
+        }
+        if (!std::isnan(prev)) ++k;
+        prev = v;
+    }
+}
+
+// ch4 皮带零点：上升沿实线贯穿全部面板并标“零点#n”，下降沿细点线；激光面板顶部标出每一圈的
+// 脉冲数（优先用日志里的 dPulse）。不受“事件线”开关影响，始终显示
+void drawBeltMarks(QPainter &g, const Mapper &m)
+{
+    if (m.p.marks.isEmpty()) return;
+    const QRectF &rt = m.gm.panel[PieceChart::PanelThick];
+    const QRectF &rl = m.gm.panel[PieceChart::PanelLaser];
+
+    // 每圈的跨度标注
+    g.setFont(fontPx(g, 10, true));
+    const QFontMetricsF fm(g.font());
+    double prevV = std::numeric_limits<double>::quiet_NaN();
+    int rev = 0;
+    for (const BeltMark &b : m.p.marks) {
+        if (!b.rise) continue;
+        const double v = m.vAtMark(b);
+        if (!std::isnan(prevV)) {
+            ++rev;
+            const double span = b.dPulse > 0 ? (double)b.dPulse : v - prevV;
+            QString txt = QStringLiteral("第%1圈  %2 脉冲").arg(rev).arg(span, 0, 'f', 0);
+            if (m.p.mmPerPulse > 0) txt += QStringLiteral(" ≈ %1 mm").arg(span * m.p.mmPerPulse, 0, 'f', 1);
+            const double xa = std::max(m.xOfV(prevV), m.gm.plotLeft);
+            const double xb = std::min(m.xOfV(v), m.gm.plotRight);
+            const double y = rl.top() + 9;
+            if (xb - xa > 12) {
+                g.setPen(QPen(kColMark, 1.0));
+                g.drawLine(QPointF(xa + 2, y), QPointF(xb - 2, y));
+                const double tw = fm.horizontalAdvance(txt) + 8;
+                if (xb - xa > tw + 8) {
+                    const QRectF box((xa + xb - tw) / 2, y - 7, tw, 14);
+                    g.fillRect(box, QColor(255, 255, 255, 230));
+                    g.setPen(kColMark);
+                    g.drawText(box, Qt::AlignCenter, txt);
+                }
+            }
+        }
+        prevV = v;
+    }
+
+    // 竖线
+    int n = 0;
+    for (const BeltMark &b : m.p.marks) {
+        if (b.rise) ++n;
+        const double x = m.xOfV(m.vAtMark(b));
+        if (x < m.gm.plotLeft - 0.5 || x > m.gm.plotRight + 0.5) continue;
+        if (!b.rise) {
+            QColor c = kColMark;
+            c.setAlpha(150);
+            g.setPen(QPen(c, 1.0, Qt::DotLine));
+            g.drawLine(QPointF(x, m.gm.top), QPointF(x, m.gm.bottom));
+            continue;
+        }
+        g.setPen(QPen(kColMark, 1.6));
+        g.drawLine(QPointF(x, m.gm.top), QPointF(x, m.gm.bottom));
+        const QString txt = QStringLiteral("零点#%1").arg(n);
+        const double tw = fm.horizontalAdvance(txt) + 8;
+        QRectF box(x + 3, rt.top() + 4, tw, 14);
+        if (box.right() > m.gm.plotRight - 2) box.moveRight(x - 3);
+        g.setPen(Qt::NoPen);
+        g.setBrush(kColMark);
+        g.drawRoundedRect(box, 2, 2);
+        g.setPen(Qt::white);
+        g.drawText(box, Qt::AlignCenter, txt);
+    }
+}
+
 int hoveredWinIndex(const Mapper &m, const QPointF &pos)
 {
     const QVector<WinRec> &wins = m.p.wins;
@@ -801,6 +899,10 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
         if (std::fabs(m.xOfMs(e.ms) - pos.x()) <= 4.0 && lines.size() < 12)
             lines << QString("%1  %2").arg(fmtClock(e.ms), e.detail.left(90));
     }
+    for (const BeltMark &b : m.p.marks) {
+        if (std::fabs(m.xOfV(m.vAtMark(b)) - pos.x()) <= 4.0 && lines.size() < 12)
+            lines << QString("%1  %2").arg(fmtClock(b.ms), b.detail.left(90));
+    }
 
     g.setFont(fontPx(g, 11));
     const QFontMetricsF fm(g.font());
@@ -912,6 +1014,7 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
 
     // ── 厚度：原始(base−lraw) 与 滤波后(thick) 两条 ──
     drawPanelFrame(g, m, gm.panel[PanelThick], r[PanelThick], QStringLiteral("厚度 mm"), kColThick, xStep);
+    drawMarkBands(g, m, gm.panel[PanelThick]);
     const bool hasRawThick = p.baseMm >= 0;
     if (v.showRaw && hasRawThick) {
         drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColRaw, 1.0),
@@ -925,6 +1028,7 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
 
     // ── 激光读数 ──
     drawPanelFrame(g, m, gm.panel[PanelLaser], r[PanelLaser], QStringLiteral("激光 mm"), kColFlt, xStep);
+    drawMarkBands(g, m, gm.panel[PanelLaser]);
     if (v.showRaw)
         drawSeries(g, m, gm.panel[PanelLaser], r[PanelLaser], QPen(kColRaw, 1.0),
                    [](const Tick &t) { return (double)t.lraw; });
@@ -956,6 +1060,7 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     if (v.showWin && !p.wins.isEmpty()) drawWindows(g, m, r[PanelThick], hiWin);
     if (v.showEvents) drawEvents(g, m);
     drawAlarms(g, m, r[PanelThick]);
+    drawBeltMarks(g, m);
 
     QVector<QPair<QColor, QString>> lgThick;
     if (v.showFlt) lgThick.append(qMakePair(kColThick, QStringLiteral("滤波后厚度 thick (=base−lflt)")));

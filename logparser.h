@@ -70,6 +70,16 @@ struct WinRec {
     double mean    = 0.0;
 };
 
+// ch4 皮带零点标记（EDGE ev=CH4_RISE / CH4_FALL）：皮带侧涂黑点经过光电开关。
+// 相邻两次 CH4_RISE 之间 = 排发皮带走了一整圈
+struct BeltMark {
+    qint64  ms     = 0;
+    quint32 pulse  = 0;       // 边沿真实跳变时刻的皮带脉冲计数（采集程序已折算消抖延迟）
+    bool    rise   = true;
+    qint64  dPulse = -1;      // CH4_RISE 的 dPulse=：与上一次上升沿的脉冲差(一圈步数)，未给出为 -1
+    QString detail;           // 原始行内容（去时间戳）
+};
+
 // 一片 = 从 ch1 上升沿(CH1_RISE) 到本片缝纫结束(STOPPING→IDLE / CURTAIN_DONE)
 struct Piece {
     int    seq       = -1;     // 日志里的 piece 序号（BASELINE/LASER_HEAD 行给出），未知为 -1
@@ -97,6 +107,7 @@ struct Piece {
     QVector<Tick>     ticks;
     QVector<LogEvent> events;
     QVector<WinRec>   wins;
+    QVector<BeltMark> marks;   // 本片 TICK 区间内的 ch4 皮带零点边沿（不进 events，单独绘制）
 };
 
 struct AlarmRec {
