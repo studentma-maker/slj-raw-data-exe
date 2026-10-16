@@ -3,10 +3,13 @@
 #include "headerview.h"
 #include "piecechart.h"
 #include "plotwidget.h"
+#include "profilewidget.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QDir>
+#include <QImage>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
@@ -66,24 +69,34 @@ void MainWindow::buildUi()
     tb->setMovable(false);
     tb->setToolButtonStyle(Qt::ToolButtonTextOnly);
     tb->addAction(QStringLiteral("打开日志…"), this, &MainWindow::onOpen);
+    tb->addAction(QStringLiteral("打开皮带轮廓…"), this, &MainWindow::onOpenProfiles);
     tb->addSeparator();
     m_dataActions << tb->addAction(QStringLiteral("导出当前视图 PDF"), this, &MainWindow::onExportCurrentPdf);
     m_dataActions << tb->addAction(QStringLiteral("导出完整报告 PDF"), this, &MainWindow::onExportReportPdf);
-    m_dataActions << tb->addAction(QStringLiteral("导出当前视图 PNG"), this, &MainWindow::onExportPng);
+    m_pngAction = tb->addAction(QStringLiteral("导出当前视图 PNG"), this, &MainWindow::onExportPng);
+    m_dataActions << m_pngAction;
     for (QAction *a : m_dataActions) a->setEnabled(false);
 
     m_tree = new QTreeWidget;
     m_tree->setHeaderHidden(true);
     m_tree->setMinimumWidth(250);
     connect(m_tree, &QTreeWidget::itemSelectionChanged, this, &MainWindow::onTreeSelection);
+    // 轮廓节点的勾选 = 是否显示该组
+    connect(m_tree, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem *it, int) {
+        if (m_profileTreeUpdating || it->data(0, RoleKind).toInt() != PageProfile) return;
+        const int idx = it->data(0, RoleIndex).toInt();
+        if (idx < 0 || idx >= m_profileVisible.size()) return;
+        m_profileVisible[idx] = (it->checkState(0) == Qt::Checked);
+        m_profileWidget->refresh();
+    });
 
     m_stack = new QStackedWidget;
 
     // 欢迎页
     m_welcome = new QLabel(QStringLiteral(
         "<div style='text-align:center'>"
-        "<p style='font-size:22px'>把 <b>sewing.log</b> 文件拖到这里</p>"
-        "<p style='font-size:14px;color:#666'>或点击左上角“打开日志…”</p></div>"));
+        "<p style='font-size:22px'>把 <b>sewing.log</b> 或 <b>.belt_profile.csv</b> 文件拖到这里</p>"
+        "<p style='font-size:14px;color:#666'>或点击左上角“打开日志…” / “打开皮带轮廓…”（轮廓可多选、可多次打开叠加对比）</p></div>"));
     m_welcome->setAlignment(Qt::AlignCenter);
     m_stack->addWidget(m_welcome);
 
@@ -137,6 +150,53 @@ void MainWindow::buildUi()
     pv->addWidget(m_plot, 1);
     m_stack->addWidget(m_piecePage);
 
+    // 皮带激光轮廓对比页
+    m_profileWidget = new ProfileWidget;
+    m_profileWidget->setProfiles(&m_profiles, &m_profileVisible);
+    auto *cbDev  = new QCheckBox(QStringLiteral("去均值（只比较形状）"));
+    auto *cbMean = new QCheckBox(QStringLiteral("平均曲线"));
+    cbDev->setChecked(true);
+    cbMean->setChecked(true);
+    cbDev->setToolTip(QStringLiteral("每组减去自身均值：不同时间/温度造成的整体高度偏移不影响形状对比"));
+    connect(cbDev, &QCheckBox::toggled, m_profileWidget, &ProfileWidget::setDeviation);
+    connect(cbMean, &QCheckBox::toggled, m_profileWidget, &ProfileWidget::setShowMean);
+    auto *btnPReset = new QPushButton(QStringLiteral("复位缩放"));
+    connect(btnPReset, &QPushButton::clicked, m_profileWidget, &ProfileWidget::resetView);
+    auto *btnAll = new QPushButton(QStringLiteral("全部显示"));
+    connect(btnAll, &QPushButton::clicked, this, [this]() {
+        for (bool &b : m_profileVisible) b = true;
+        rebuildProfileTree();
+        m_profileWidget->refresh();
+    });
+    auto *btnClear = new QPushButton(QStringLiteral("清空轮廓"));
+    connect(btnClear, &QPushButton::clicked, this, [this]() {
+        m_profiles.clear();
+        m_profileVisible.clear();
+        m_profileWidget->setProfiles(&m_profiles, &m_profileVisible);
+        rebuildProfileTree();
+        m_pngAction->setEnabled(!m_data.path.isEmpty());
+        m_stack->setCurrentWidget(m_welcome);
+    });
+    auto *phint = new QLabel(QStringLiteral(
+        "左侧勾选要显示的组　图例：悬停高亮、点击固定　滚轮：缩放横轴　Ctrl+滚轮：缩放纵轴　左键拖动：平移　双击：复位"));
+    phint->setStyleSheet("color:#666");
+    auto *pbar = new QHBoxLayout;
+    pbar->setContentsMargins(8, 4, 8, 0);
+    pbar->addWidget(btnPReset);
+    pbar->addWidget(btnAll);
+    pbar->addWidget(btnClear);
+    pbar->addWidget(cbDev);
+    pbar->addWidget(cbMean);
+    pbar->addSpacing(12);
+    pbar->addWidget(phint, 1);
+    m_profilePage = new QWidget;
+    auto *ppv = new QVBoxLayout(m_profilePage);
+    ppv->setContentsMargins(0, 0, 0, 0);
+    ppv->setSpacing(2);
+    ppv->addLayout(pbar);
+    ppv->addWidget(m_profileWidget, 1);
+    m_stack->addWidget(m_profilePage);
+
     // ALARM 页
     m_alarmTable = new QTableWidget;
     m_alarmTable->setColumnCount(5);
@@ -182,14 +242,115 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *e)
 
 void MainWindow::dropEvent(QDropEvent *e)
 {
-    const QList<QUrl> urls = e->mimeData()->urls();
-    for (const QUrl &u : urls) {
-        if (u.isLocalFile()) {
-            e->acceptProposedAction();
-            loadFile(u.toLocalFile());
-            return;
-        }
+    // .csv 按皮带轮廓叠加打开（可一次拖多个）；其余按 sewing.log 打开第一个
+    QStringList csvs;
+    QString log;
+    for (const QUrl &u : e->mimeData()->urls()) {
+        if (!u.isLocalFile()) continue;
+        const QString path = u.toLocalFile();
+        if (path.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) csvs << path;
+        else if (log.isEmpty()) log = path;
     }
+    if (csvs.isEmpty() && log.isEmpty()) return;
+    e->acceptProposedAction();
+    if (!log.isEmpty()) loadFile(log);
+    if (!csvs.isEmpty()) loadProfiles(csvs);
+}
+
+void MainWindow::onOpenProfiles()
+{
+    // 轮廓文件默认名以 . 开头（Linux 下是隐藏文件），对话框要显示隐藏文件
+    QFileDialog dlg(this, QStringLiteral("打开皮带轮廓（可多选）"));
+    dlg.setFileMode(QFileDialog::ExistingFiles);
+    dlg.setNameFilters({QStringLiteral("皮带轮廓 (*.csv)"), QStringLiteral("所有文件 (*)")});
+    dlg.setFilter(dlg.filter() | QDir::Hidden);
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dlg.exec() == QDialog::Accepted) loadProfiles(dlg.selectedFiles());
+}
+
+bool MainWindow::loadProfiles(const QStringList &paths, bool quiet, QString *errorOut)
+{
+    QStringList errors;
+    int loaded = 0;
+    for (const QString &path : paths) {
+        BeltProfile p;
+        QString err;
+        if (!parseBeltProfile(path, p, &err)) {
+            errors << QStringLiteral("%1：%2").arg(QFileInfo(path).fileName(), err);
+            continue;
+        }
+        // 同一路径再次打开 = 刷新这一组，颜色(下标)不变
+        int at = -1;
+        for (int i = 0; i < m_profiles.size(); ++i)
+            if (QFileInfo(m_profiles[i].path) == QFileInfo(path)) at = i;
+        if (at >= 0) {
+            m_profiles[at] = p;
+            m_profileVisible[at] = true;
+        } else {
+            m_profiles.append(p);
+            m_profileVisible.append(true);
+        }
+        ++loaded;
+    }
+    if (errorOut) *errorOut = errors.join('\n');
+    if (!errors.isEmpty() && !quiet)
+        QMessageBox::warning(this, QStringLiteral("部分文件无法解析"), errors.join('\n'));
+    if (loaded == 0) return false;
+
+    m_profileWidget->setProfiles(&m_profiles, &m_profileVisible);
+    rebuildProfileTree();
+    m_pngAction->setEnabled(true);
+    showProfilePage(-1);
+    statusBar()->showMessage(QStringLiteral("皮带轮廓 %1 组").arg(m_profiles.size()));
+    return true;
+}
+
+void MainWindow::rebuildProfileTree()
+{
+    m_profileTreeUpdating = true;
+    for (int i = m_tree->topLevelItemCount() - 1; i >= 0; --i) {
+        QTreeWidgetItem *top = m_tree->topLevelItem(i);
+        if (top->data(0, RoleKind).toInt() == PageProfile) delete m_tree->takeTopLevelItem(i);
+    }
+    if (!m_profiles.isEmpty()) {
+        auto *root = new QTreeWidgetItem(QStringList(QStringLiteral("皮带轮廓 (%1)").arg(m_profiles.size())));
+        root->setData(0, RoleKind, PageProfile);
+        root->setData(0, RoleIndex, -1);
+        QFont f = root->font(0);
+        f.setBold(true);
+        root->setFont(0, f);
+        root->setToolTip(0, QStringLiteral("点击查看全部勾选组的叠加对比"));
+        m_tree->insertTopLevelItem(0, root);
+        for (int i = 0; i < m_profiles.size(); ++i) {
+            const BeltProfile &p = m_profiles[i];
+            auto *it = new QTreeWidgetItem(root, QStringList(
+                QStringLiteral("#%1  %2").arg(i + 1).arg(p.time.isEmpty() ? p.name : p.time)));
+            it->setData(0, RoleKind, PageProfile);
+            it->setData(0, RoleIndex, i);
+            it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+            it->setCheckState(0, m_profileVisible[i] ? Qt::Checked : Qt::Unchecked);
+            it->setForeground(0, ProfileChart::seriesColor(i));
+            it->setToolTip(0, p.path);
+        }
+        root->setExpanded(true);
+    }
+    m_profileTreeUpdating = false;
+}
+
+void MainWindow::showProfilePage(int highlight)
+{
+    m_profileWidget->setHighlight(highlight);
+    m_stack->setCurrentWidget(m_profilePage);
+}
+
+bool MainWindow::exportProfilePng(const QString &path, const QSize &size)
+{
+    QImage img(size, QImage::Format_ARGB32);
+    QPainter g(&img);
+    ProfileChart::render(g, QRectF(QPointF(0, 0), QSizeF(size)), m_profiles, m_profileVisible,
+                         m_profileWidget->view(), -1, nullptr);
+    g.end();
+    return img.save(path, "PNG");
 }
 
 void MainWindow::onOpen()
@@ -221,6 +382,7 @@ bool MainWindow::loadFile(const QString &path, bool quiet, QString *errorOut)
     m_data = data;
 
     rebuildTree();
+    rebuildProfileTree();   // m_tree->clear() 把轮廓节点也清掉了
     fillAlarmTable();
     for (QAction *a : m_dataActions) a->setEnabled(true);
     setWindowTitle(QStringLiteral("%1 — 缝纫日志可视化").arg(QFileInfo(path).fileName()));
@@ -326,6 +488,8 @@ void MainWindow::onTreeSelection()
         m_stack->setCurrentWidget(m_piecePage);
     } else if (kind == PageAlarm) {
         m_stack->setCurrentWidget(m_alarmPage);
+    } else if (kind == PageProfile) {
+        showProfilePage(idx);   // 根节点 idx=-1：不高亮
     }
 }
 
@@ -527,8 +691,14 @@ void MainWindow::onExportPng()
     QWidget *target = m_stack->currentWidget();
     if (target == m_piecePage) target = m_plot;
     else if (target == m_headerPage) target = m_headerView;
+    QString suggested = defaultExportName(QStringLiteral("_view.png"));
+    if (target == m_profilePage) {
+        target = m_profileWidget;
+        if (!m_profiles.isEmpty())
+            suggested = QFileInfo(m_profiles.first().path).absolutePath() + QStringLiteral("/belt_profile_compare.png");
+    }
     const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("导出当前视图为 PNG"),
-                                                      defaultExportName(QStringLiteral("_view.png")),
+                                                      suggested,
                                                       QStringLiteral("PNG (*.png)"));
     if (path.isEmpty()) return;
     if (target->grab().save(path, "PNG")) statusBar()->showMessage(QStringLiteral("已导出：%1").arg(path), 8000);

@@ -15,11 +15,15 @@ SOURCES += \
     piecechart.cpp \
     plotwidget.cpp \
     headerview.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    beltprofile.cpp \
+    profilewidget.cpp
 
 HEADERS += \
     logparser.h \
     piecechart.h \
     plotwidget.h \
     headerview.h \
-    mainwindow.h
+    mainwindow.h \
+    beltprofile.h \
+    profilewidget.h

@@ -1,11 +1,14 @@
 #pragma once
 
+#include "beltprofile.h"
 #include "logparser.h"
 
 #include <QMainWindow>
 
 class HeaderView;
 class PlotWidget;
+class ProfileWidget;
+class QAction;
 class QLabel;
 class QPainter;
 class QPdfWriter;
@@ -26,6 +29,9 @@ public:
     bool exportReportPdf(const QString &path);
     bool exportCurrentPdf(const QString &path);
     void selectPiece(int pieceIdx);
+    // 皮带激光轮廓（.belt_profile.csv）：可多次打开叠加对比，与 sewing.log 互不影响
+    bool loadProfiles(const QStringList &paths, bool quiet = false, QString *errorOut = nullptr);
+    bool exportProfilePng(const QString &path, const QSize &size = QSize(1600, 900));
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
@@ -33,17 +39,20 @@ protected:
 
 private slots:
     void onOpen();
+    void onOpenProfiles();
     void onExportCurrentPdf();
     void onExportReportPdf();
     void onExportPng();
     void onTreeSelection();
 
 private:
-    enum PageKind { PageWelcome, PageHeader, PagePiece, PageAlarm };
+    enum PageKind { PageWelcome, PageHeader, PagePiece, PageAlarm, PageProfile };
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleIndex };
 
     void    buildUi();
     void    rebuildTree();
+    void    rebuildProfileTree();
+    void    showProfilePage(int highlight);
     void    fillAlarmTable();
     QString headerTitle(int headerIdx) const;
     QString defaultExportName(const QString &suffix) const;
@@ -63,4 +72,11 @@ private:
     QWidget        *m_headerPage = nullptr;
     QWidget        *m_piecePage  = nullptr;
     QList<QAction *> m_dataActions;
+    QAction        *m_pngAction  = nullptr;
+
+    QVector<BeltProfile> m_profiles;
+    QVector<bool>        m_profileVisible;
+    ProfileWidget  *m_profileWidget = nullptr;
+    QWidget        *m_profilePage   = nullptr;
+    bool            m_profileTreeUpdating = false;   // 重建轮廓树节点时屏蔽 itemChanged
 };
