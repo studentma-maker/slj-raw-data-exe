@@ -8,6 +8,8 @@
 class HeaderView;
 class PlotWidget;
 class ProfileWidget;
+class ProfileAnalysisPage;
+class QTabWidget;
 class QAction;
 class QLabel;
 class QPainter;
@@ -32,6 +34,8 @@ public:
     // 皮带激光轮廓（.belt_profile.csv）：可多次打开叠加对比，与 sewing.log 互不影响
     bool loadProfiles(const QStringList &paths, bool quiet = false, QString *errorOut = nullptr);
     bool exportProfilePng(const QString &path, const QSize &size = QSize(1600, 900));
+    bool exportProfileAnalysisPng(const QString &path, const QSize &size = QSize(1600, 1000));
+    void setProfileRemoveRoller(bool on);   // 批处理用：不经界面直接设置“扣除辊筒成分”
 
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override;
@@ -53,6 +57,7 @@ private:
     void    rebuildTree();
     void    rebuildProfileTree();
     void    showProfilePage(int highlight);
+    void    refreshProfileViews();   // 轮廓数据/勾选/选项变化：曲线页与分析页一起刷新
     void    fillAlarmTable();
     QString headerTitle(int headerIdx) const;
     QString defaultExportName(const QString &suffix) const;
@@ -77,6 +82,8 @@ private:
     QVector<BeltProfile> m_profiles;
     QVector<bool>        m_profileVisible;
     ProfileWidget  *m_profileWidget = nullptr;
+    ProfileAnalysisPage *m_analysisPage = nullptr;
+    QTabWidget     *m_profileTabs   = nullptr;
     QWidget        *m_profilePage   = nullptr;
     bool            m_profileTreeUpdating = false;   // 重建轮廓树节点时屏蔽 itemChanged
 };

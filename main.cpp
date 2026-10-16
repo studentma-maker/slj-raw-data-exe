@@ -21,7 +21,8 @@ int main(int argc, char *argv[])
     QString log;
     for (int i = 1; i < args.size(); ++i) {
         const QString &a = args.at(i);
-        if (a.startsWith(QStringLiteral("--"))) { ++i; continue; }   // --pdf/--profile-png 的参数
+        if (a == QStringLiteral("--remove-roller")) continue;
+        if (a.startsWith(QStringLiteral("--"))) { ++i; continue; }   // --pdf/--profile-png 等的参数
         if (a.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) csvs << a;
         else if (log.isEmpty()) log = a;
     }
@@ -35,6 +36,17 @@ int main(int argc, char *argv[])
             return 1;
         }
         return w.exportProfilePng(args.at(pngAt + 1)) ? 0 : 2;
+    }
+    // 批处理：SewingLogViewer a.csv b.csv ... --profile-analysis-png <out.png> [--remove-roller]  导出分析页
+    const int anaAt = args.indexOf(QStringLiteral("--profile-analysis-png"));
+    if (anaAt > 0 && anaAt + 1 < args.size()) {
+        QString err;
+        if (!w.loadProfiles(csvs, true, &err)) {
+            fprintf(stderr, "%s\n", qPrintable(err.isEmpty() ? QStringLiteral("no profile loaded") : err));
+            return 1;
+        }
+        if (args.contains(QStringLiteral("--remove-roller"))) w.setProfileRemoveRoller(true);
+        return w.exportProfileAnalysisPng(args.at(anaAt + 1)) ? 0 : 2;
     }
 
     // 批处理：SewingLogViewer <sewing.log> --pdf <report.pdf>  不显示窗口，直接导出完整报告

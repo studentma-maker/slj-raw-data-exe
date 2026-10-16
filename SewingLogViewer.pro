@@ -17,7 +17,9 @@ SOURCES += \
     headerview.cpp \
     mainwindow.cpp \
     beltprofile.cpp \
-    profilewidget.cpp
+    profileanalysis.cpp \
+    profilewidget.cpp \
+    analysispage.cpp
 
 HEADERS += \
     logparser.h \
@@ -26,4 +28,6 @@ HEADERS += \
     headerview.h \
     mainwindow.h \
     beltprofile.h \
-    profilewidget.h
+    profileanalysis.h \
+    profilewidget.h \
+    analysispage.h

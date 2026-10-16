@@ -18,7 +18,7 @@ const double kTitleH    = 54.0;
 const double kXAxisH    = 50.0;
 const double kRowH      = 34.0;
 const double kMeanRowH  = 24.0;
-const int    kGridN     = 1024;     // 平均曲线/统计用的公共进度网格
+const int    kGridN     = kProfileGridN;   // 平均曲线/统计用的公共进度网格（见 profileanalysis.h）
 const double kMmPerPulse = 0.003563;   // 上位机默认 mm/脉冲（只用于横轴的估算 mm 标注）
 const double kMinXSpan  = 0.004;
 
@@ -63,66 +63,9 @@ QPointF eventPos(const QMouseEvent *e)
 #endif
 }
 
-// 可见各组在公共网格上的取值（去均值模式下各自减均值）、平均曲线、每组与平均的相关系数
-struct Stats {
-    QVector<int> vis;                    // 可见组下标
-    QVector<QVector<double>> grid;       // [k][i]，k 对应 vis[k]
-    QVector<double> mean;                // 平均曲线
-    QVector<double> rToMean;             // 每组与平均曲线的相关系数（形状，均去均值后算）
-    double meanPairR = std::numeric_limits<double>::quiet_NaN();
-    double circMm = 0.0;                 // 估算周长（可见组 cyclePulse 平均 × mm/脉冲）
-};
-
-double corr(const QVector<double> &a, const QVector<double> &b)
-{
-    const int n = a.size();
-    double ma = 0, mb = 0;
-    for (int i = 0; i < n; ++i) { ma += a[i]; mb += b[i]; }
-    ma /= n; mb /= n;
-    double sab = 0, saa = 0, sbb = 0;
-    for (int i = 0; i < n; ++i) {
-        sab += (a[i] - ma) * (b[i] - mb);
-        saa += (a[i] - ma) * (a[i] - ma);
-        sbb += (b[i] - mb) * (b[i] - mb);
-    }
-    return (saa > 0 && sbb > 0) ? sab / std::sqrt(saa * sbb) : std::numeric_limits<double>::quiet_NaN();
-}
-
-Stats computeStats(const QVector<BeltProfile> &ps, const QVector<bool> &visible, bool deviation)
-{
-    Stats s;
-    double cycSum = 0;
-    int cycN = 0;
-    for (int i = 0; i < ps.size(); ++i) {
-        if (i < visible.size() && !visible[i]) continue;
-        s.vis.append(i);
-        QVector<double> g(kGridN);
-        for (int k = 0; k < kGridN; ++k) {
-            const double v = beltProfileAt(ps[i], (k + 0.5) / kGridN);
-            g[k] = deviation ? v - ps[i].mean : v;
-        }
-        s.grid.append(g);
-        if (ps[i].cyclePulse > 0) { cycSum += ps[i].cyclePulse; ++cycN; }
-    }
-    if (cycN > 0) s.circMm = cycSum / cycN * kMmPerPulse;
-    if (s.vis.isEmpty()) return s;
-    s.mean = QVector<double>(kGridN, 0.0);
-    for (const auto &g : s.grid)
-        for (int k = 0; k < kGridN; ++k) s.mean[k] += g[k] / s.grid.size();
-    for (const auto &g : s.grid) s.rToMean.append(s.grid.size() >= 2 ? corr(g, s.mean) : 1.0);
-    if (s.grid.size() >= 2) {
-        double sum = 0;
-        int n = 0;
-        for (int a = 0; a < s.grid.size(); ++a)
-            for (int b = a + 1; b < s.grid.size(); ++b) { sum += corr(s.grid[a], s.grid[b]); ++n; }
-        s.meanPairR = sum / n;
-    }
-    return s;
-}
-
 struct YRange { double lo = 0, hi = 1; };
 
-YRange autoRange(const Stats &s)
+YRange autoRange(const ProfileAnalysis &s)
 {
     double lo = 1e18, hi = -1e18;
     for (const auto &g : s.grid)
@@ -172,7 +115,8 @@ ProfileChart::Geom ProfileChart::geometry(const QRectF &rect, const QVector<Belt
 }
 
 void ProfileChart::render(QPainter &g, const QRectF &rect, const QVector<BeltProfile> &ps,
-                          const QVector<bool> &visible, const View &v, int highlight, const QPointF *hover)
+                          const QVector<bool> &visible, const View &v, const QVector<int> &highlight,
+                          const QPointF *hover, const ProfileAnalysis *precomputed)
 {
     g.save();
     g.setRenderHint(QPainter::Antialiasing, true);
@@ -180,7 +124,9 @@ void ProfileChart::render(QPainter &g, const QRectF &rect, const QVector<BeltPro
     g.fillRect(rect, Qt::white);
 
     const Geom gm = geometry(rect, ps, visible);
-    const Stats st = computeStats(ps, visible, v.deviation);
+    ProfileAnalysis computed;
+    if (!precomputed) computed = analyzeProfiles(ps, visible, v.options());
+    const ProfileAnalysis &st = precomputed ? *precomputed : computed;
     const QRectF &r = gm.plot;
 
     // ── 标题 ──
@@ -190,7 +136,9 @@ void ProfileChart::render(QPainter &g, const QRectF &rect, const QVector<BeltPro
                QStringLiteral("皮带激光轮廓对比   %1 组可见 / 共 %2 组").arg(st.vis.size()).arg(ps.size()));
     QString sub = v.deviation ? QStringLiteral("纵轴：激光读数减去本组均值（只比较形状）")
                               : QStringLiteral("纵轴：激光原始读数");
-    if (!std::isnan(st.meanPairR))
+    if (st.rollerRemoved)
+        sub += QStringLiteral("，已扣除周期 %1 mm 的辊筒成分").arg(v.rollerPeriodMm, 0, 'f', 1);
+    if (st.vis.size() >= 2)
         sub += QStringLiteral("    两两相关系数平均 %1").arg(st.meanPairR, 0, 'f', 2);
     g.setFont(fontPx(g, 12));
     g.setPen(kInk2);
@@ -276,14 +224,14 @@ void ProfileChart::render(QPainter &g, const QRectF &rect, const QVector<BeltPro
     };
     // 高亮组最后画，压在最上面
     QVector<int> order;
-    for (int k = 0; k < st.vis.size(); ++k) if (st.vis[k] != highlight) order.append(k);
-    for (int k = 0; k < st.vis.size(); ++k) if (st.vis[k] == highlight) order.append(k);
+    for (int k = 0; k < st.vis.size(); ++k) if (!highlight.contains(st.vis[k])) order.append(k);
+    for (int k = 0; k < st.vis.size(); ++k) if (highlight.contains(st.vis[k])) order.append(k);
     for (int k : order) {
         const int idx = st.vis[k];
         QColor c = seriesColor(idx);
         double w = 1.4;
-        if (highlight >= 0) {
-            if (idx == highlight) w = 2.6;
+        if (!highlight.isEmpty()) {
+            if (highlight.contains(idx)) w = 2.6;
             else c.setAlpha(55);
         }
         g.setPen(QPen(c, w, seriesStyle(idx), Qt::RoundCap, Qt::RoundJoin));
@@ -323,7 +271,7 @@ void ProfileChart::render(QPainter &g, const QRectF &rect, const QVector<BeltPro
         const BeltProfile &p = ps[idx];
         const QRectF row = gm.legendRows[k];
         if (row.bottom() > rect.bottom()) break;
-        if (idx == highlight) g.fillRect(row.adjusted(-4, 0, 0, -2), QColor("#f1f3f5"));
+        if (highlight.contains(idx)) g.fillRect(row.adjusted(-4, 0, 0, -2), QColor("#f1f3f5"));
         g.setPen(QPen(seriesColor(idx), 2.4, seriesStyle(idx), Qt::RoundCap));
         g.drawLine(QPointF(row.left() + 2, row.top() + 9), QPointF(row.left() + 28, row.top() + 9));
         g.setFont(fontPx(g, 11, true));
@@ -401,12 +349,24 @@ void ProfileWidget::setProfiles(const QVector<BeltProfile> *ps, const QVector<bo
     m_ps = ps;
     m_visible = visible;
     m_hoverRow = -1;
-    if (!ps || m_pinned >= ps->size()) m_pinned = -1;
+    m_anDirty = true;
+    if (!ps) m_pinned.clear();
+    else for (int i = m_pinned.size() - 1; i >= 0; --i) if (m_pinned[i] >= ps->size()) m_pinned.removeAt(i);
     update();
 }
 
-void ProfileWidget::setHighlight(int idx) { m_pinned = idx; update(); }
-void ProfileWidget::refresh() { update(); }
+void ProfileWidget::setHighlight(int idx)
+{
+    m_pinned.clear();
+    if (idx >= 0) m_pinned.append(idx);
+    update();
+}
+void ProfileWidget::setHighlightPair(int a, int b)
+{
+    m_pinned = {a, b};
+    update();
+}
+void ProfileWidget::refresh() { m_anDirty = true; update(); }
 
 void ProfileWidget::resetView()
 {
@@ -417,17 +377,25 @@ void ProfileWidget::resetView()
     update();
 }
 
-void ProfileWidget::setDeviation(bool on) { m_view.deviation = on; m_view.y[0] = 0.0; m_view.y[1] = 1.0; update(); }
+void ProfileWidget::setDeviation(bool on) { m_view.deviation = on; m_view.y[0] = 0.0; m_view.y[1] = 1.0; refresh(); }
 void ProfileWidget::setShowMean(bool on)  { m_view.showMean = on; update(); }
+void ProfileWidget::setRemoveRoller(bool on) { m_view.removeRoller = on; refresh(); }
+void ProfileWidget::setRollerPeriodMm(double mm) { m_view.rollerPeriodMm = mm; refresh(); }
 
 void ProfileWidget::paintEvent(QPaintEvent *)
 {
     QPainter g(this);
     static const QVector<BeltProfile> kEmpty;
     static const QVector<bool> kNone;
-    const int hl = m_hoverRow >= 0 ? m_hoverRow : m_pinned;
-    ProfileChart::render(g, QRectF(rect()), m_ps ? *m_ps : kEmpty, m_visible ? *m_visible : kNone, m_view, hl,
-                         (m_hoverValid && !m_panning) ? &m_hoverPos : nullptr);
+    const QVector<int> hl = m_hoverRow >= 0 ? QVector<int>{m_hoverRow} : m_pinned;
+    const QVector<BeltProfile> &ps = m_ps ? *m_ps : kEmpty;
+    const QVector<bool> &vis = m_visible ? *m_visible : kNone;
+    if (m_anDirty) {
+        m_an = analyzeProfiles(ps, vis, m_view.options());
+        m_anDirty = false;
+    }
+    ProfileChart::render(g, QRectF(rect()), ps, vis, m_view, hl,
+                         (m_hoverValid && !m_panning) ? &m_hoverPos : nullptr, &m_an);
 }
 
 int ProfileWidget::legendRowAt(const QPointF &pos) const
@@ -490,7 +458,8 @@ void ProfileWidget::mousePressEvent(QMouseEvent *e)
     if (e->button() != Qt::LeftButton) return;
     const int row = legendRowAt(pos);
     if (row >= 0) {
-        m_pinned = (m_pinned == row) ? -1 : row;
+        if (m_pinned.size() == 1 && m_pinned.first() == row) m_pinned.clear();
+        else m_pinned = {row};
         update();
         return;
     }

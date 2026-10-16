@@ -3,12 +3,15 @@
 #include "headerview.h"
 #include "piecechart.h"
 #include "plotwidget.h"
+#include "analysispage.h"
 #include "profilewidget.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDir>
+#include <QDoubleSpinBox>
+#include <QTabWidget>
 #include <QImage>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -87,7 +90,7 @@ void MainWindow::buildUi()
         const int idx = it->data(0, RoleIndex).toInt();
         if (idx < 0 || idx >= m_profileVisible.size()) return;
         m_profileVisible[idx] = (it->checkState(0) == Qt::Checked);
-        m_profileWidget->refresh();
+        refreshProfileViews();
     });
 
     m_stack = new QStackedWidget;
@@ -158,15 +161,29 @@ void MainWindow::buildUi()
     cbDev->setChecked(true);
     cbMean->setChecked(true);
     cbDev->setToolTip(QStringLiteral("每组减去自身均值：不同时间/温度造成的整体高度偏移不影响形状对比"));
-    connect(cbDev, &QCheckBox::toggled, m_profileWidget, &ProfileWidget::setDeviation);
+    connect(cbDev, &QCheckBox::toggled, this, [this](bool on) { m_profileWidget->setDeviation(on); refreshProfileViews(); });
     connect(cbMean, &QCheckBox::toggled, m_profileWidget, &ProfileWidget::setShowMean);
+    // 扣除辊筒成分：激光测点正下方是带齿从动辊（外径约 33mm，周长约 103mm），皮带一圈≈辊筒 7.83 圈
+    auto *cbRoller = new QCheckBox(QStringLiteral("扣除辊筒成分，周期"));
+    cbRoller->setToolTip(QStringLiteral("按给定周期对每组“本组−平均曲线”拟合正弦并扣掉（迭代 3 次），"
+                                        "用来去掉从动辊跳动、看皮带本身的重复性；至少 2 组才生效"));
+    auto *spRoller = new QDoubleSpinBox;
+    spRoller->setRange(20.0, 400.0);
+    spRoller->setDecimals(1);
+    spRoller->setSingleStep(0.1);
+    spRoller->setSuffix(QStringLiteral(" mm"));
+    spRoller->setValue(m_profileWidget->view().rollerPeriodMm);
+    spRoller->setKeyboardTracking(false);
+    connect(cbRoller, &QCheckBox::toggled, this, [this](bool on) { m_profileWidget->setRemoveRoller(on); refreshProfileViews(); });
+    connect(spRoller, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double mm) { m_profileWidget->setRollerPeriodMm(mm); refreshProfileViews(); });
     auto *btnPReset = new QPushButton(QStringLiteral("复位缩放"));
     connect(btnPReset, &QPushButton::clicked, m_profileWidget, &ProfileWidget::resetView);
     auto *btnAll = new QPushButton(QStringLiteral("全部显示"));
     connect(btnAll, &QPushButton::clicked, this, [this]() {
         for (bool &b : m_profileVisible) b = true;
         rebuildProfileTree();
-        m_profileWidget->refresh();
+        refreshProfileViews();
     });
     auto *btnClear = new QPushButton(QStringLiteral("清空轮廓"));
     connect(btnClear, &QPushButton::clicked, this, [this]() {
@@ -174,6 +191,7 @@ void MainWindow::buildUi()
         m_profileVisible.clear();
         m_profileWidget->setProfiles(&m_profiles, &m_profileVisible);
         rebuildProfileTree();
+        refreshProfileViews();
         m_pngAction->setEnabled(!m_data.path.isEmpty());
         m_stack->setCurrentWidget(m_welcome);
     });
@@ -187,6 +205,8 @@ void MainWindow::buildUi()
     pbar->addWidget(btnClear);
     pbar->addWidget(cbDev);
     pbar->addWidget(cbMean);
+    pbar->addWidget(cbRoller);
+    pbar->addWidget(spRoller);
     pbar->addSpacing(12);
     pbar->addWidget(phint, 1);
     m_profilePage = new QWidget;
@@ -194,7 +214,20 @@ void MainWindow::buildUi()
     ppv->setContentsMargins(0, 0, 0, 0);
     ppv->setSpacing(2);
     ppv->addLayout(pbar);
-    ppv->addWidget(m_profileWidget, 1);
+    m_analysisPage = new ProfileAnalysisPage;
+    m_profileTabs = new QTabWidget;
+    m_profileTabs->addTab(m_profileWidget, QStringLiteral("曲线"));
+    m_profileTabs->addTab(m_analysisPage, QStringLiteral("分析"));
+    // 分析页点矩阵格子 / 双击表格行 → 回到曲线页高亮
+    connect(m_analysisPage, &ProfileAnalysisPage::pairClicked, this, [this](int a, int b) {
+        m_profileWidget->setHighlightPair(a, b);
+        m_profileTabs->setCurrentWidget(m_profileWidget);
+    });
+    connect(m_analysisPage, &ProfileAnalysisPage::profileClicked, this, [this](int idx) {
+        m_profileWidget->setHighlight(idx);
+        m_profileTabs->setCurrentWidget(m_profileWidget);
+    });
+    ppv->addWidget(m_profileTabs, 1);
     m_stack->addWidget(m_profilePage);
 
     // ALARM 页
@@ -299,6 +332,7 @@ bool MainWindow::loadProfiles(const QStringList &paths, bool quiet, QString *err
 
     m_profileWidget->setProfiles(&m_profiles, &m_profileVisible);
     rebuildProfileTree();
+    refreshProfileViews();
     m_pngAction->setEnabled(true);
     showProfilePage(-1);
     statusBar()->showMessage(QStringLiteral("皮带轮廓 %1 组").arg(m_profiles.size()));
@@ -337,6 +371,29 @@ void MainWindow::rebuildProfileTree()
     m_profileTreeUpdating = false;
 }
 
+void MainWindow::setProfileRemoveRoller(bool on)
+{
+    m_profileWidget->setRemoveRoller(on);
+    refreshProfileViews();
+}
+
+void MainWindow::refreshProfileViews()
+{
+    m_profileWidget->refresh();
+    m_analysisPage->setData(&m_profiles, &m_profileVisible, m_profileWidget->view().options());
+}
+
+bool MainWindow::exportProfileAnalysisPng(const QString &path, const QSize &size)
+{
+    ProfileAnalysisPage page;
+    page.setAttribute(Qt::WA_DontShowOnScreen);
+    page.setData(&m_profiles, &m_profileVisible, m_profileWidget->view().options());
+    page.resize(size);
+    page.show();
+    QApplication::processEvents();
+    return page.grab().save(path, "PNG");
+}
+
 void MainWindow::showProfilePage(int highlight)
 {
     m_profileWidget->setHighlight(highlight);
@@ -348,7 +405,7 @@ bool MainWindow::exportProfilePng(const QString &path, const QSize &size)
     QImage img(size, QImage::Format_ARGB32);
     QPainter g(&img);
     ProfileChart::render(g, QRectF(QPointF(0, 0), QSizeF(size)), m_profiles, m_profileVisible,
-                         m_profileWidget->view(), -1, nullptr);
+                         m_profileWidget->view(), QVector<int>(), nullptr);
     g.end();
     return img.save(path, "PNG");
 }
@@ -693,9 +750,11 @@ void MainWindow::onExportPng()
     else if (target == m_headerPage) target = m_headerView;
     QString suggested = defaultExportName(QStringLiteral("_view.png"));
     if (target == m_profilePage) {
-        target = m_profileWidget;
+        target = m_profileTabs->currentWidget();
         if (!m_profiles.isEmpty())
-            suggested = QFileInfo(m_profiles.first().path).absolutePath() + QStringLiteral("/belt_profile_compare.png");
+            suggested = QFileInfo(m_profiles.first().path).absolutePath()
+                        + (target == m_analysisPage ? QStringLiteral("/belt_profile_analysis.png")
+                                                    : QStringLiteral("/belt_profile_compare.png"));
     }
     const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("导出当前视图为 PNG"),
                                                       suggested,
