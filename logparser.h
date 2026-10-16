@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <limits>
 #include <QVector>
 
 // sewing.log 解析结果。日志格式见 slj_kickpi_qt_pro/worker/sewingworker.cpp 的
@@ -28,6 +29,7 @@ struct HeaderInfo {
     int    paifaLo     = 0;
     int    songfaHi    = 0;
     int    songfaLo    = 0;
+    QString beltProfile;            // bprof=：本次武装加载的皮带激光轮廓表采集时间，none/空 = 未加载（无皮带补偿）
     QVector<LookupRow> rows;
     QString      paramKey;          // 去掉时间戳后的原始内容，用于判断参数是否变化
     bool         changed = false;   // 与上一条 HEADER 相比参数有变化
@@ -46,6 +48,10 @@ struct Tick {
     float   freq     = 0;
     quint32 pulse    = 0;
     qint16  row      = 0;
+    float   bpos     = -1.0f;   // 皮带一圈进度 0~1，-1 = 无效/旧日志
+    float   bdev     = std::numeric_limits<float>::quiet_NaN();   // 当前位置皮带轮廓偏差 mm（"-"/旧日志 = NaN）
+    float   bthick   = std::numeric_limits<float>::quiet_NaN();   // 皮带补偿后厚度 mm（同上）
+    float   tthick   = std::numeric_limits<float>::quiet_NaN();   // 对比：只用轮廓表绝对值作基线的厚度 mm
     quint8  ch1 = 0, ch2 = 0, ch3 = 0, vfd = 0;
     quint8  state    = ST_IDLE;
 };
@@ -93,6 +99,7 @@ struct Piece {
     double curtainMm = -1.0;   // CURTAIN_DONE.lenMm：编码器实测的缝纫后发帘长度
     double minThk = -1.0, maxThk = -1.0, avgThk = -1.0;
     double baseMm    = -1.0;
+    double baseDev   = std::numeric_limits<double>::quiet_NaN();   // BASELINE.bdev：基线样本处皮带轮廓偏差均值
     int    baseN     = 0;
     bool   baseReused = false;
     int    winLanes  = 0;

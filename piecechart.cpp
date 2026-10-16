@@ -30,6 +30,8 @@ const QColor kColRaw("#ae3ec9");
 const QColor kColFlt("#2b8a3e");
 const QColor kColFreq("#c2255c");
 const QColor kColPos("#0b7285");
+const QColor kColComp("#0ca678");    // 皮带补偿后厚度 bthick / 预期无料读数
+const QColor kColTable("#f08c00");   // 对比：只用轮廓表绝对值作基线 tthick
 const QColor kColTime("#868e96");
 const QColor kColGrid("#e9ecef");
 const QColor kColFrame("#868e96");
@@ -101,6 +103,8 @@ Ranges computeRanges(const Piece &p)
     }
     for (const Tick &t : p.ticks) {
         thkMax = std::max(thkMax, fltThickAt(p, t));
+        if (std::isfinite(t.bthick)) thkMax = std::max(thkMax, (double)t.bthick);
+        if (std::isfinite(t.tthick)) thkMax = std::max(thkMax, (double)t.tthick);
         lasMin = std::min(lasMin, (double)t.lflt);
         lasMax = std::max(lasMax, (double)t.lflt);
         freqMax = std::max(freqMax, (double)t.freq);
@@ -441,6 +445,10 @@ void drawTitle(QPainter &g, const QRectF &rect, const Piece &p, const HeaderInfo
     if (p.baseMm >= 0)
         info << QStringLiteral("基线 %1 mm (n=%2%3)").arg(p.baseMm, 0, 'f', 2).arg(p.baseN)
                     .arg(p.baseReused ? QStringLiteral(", 复用") : QString());
+    if (hdr && !hdr->beltProfile.isEmpty())
+        info << QStringLiteral("皮带轮廓表 %1%2").arg(hdr->beltProfile)
+                    .arg(std::isfinite(p.baseDev) ? QStringLiteral("（基线处偏差 %1 mm）").arg(p.baseDev, 0, 'f', 3)
+                                                  : QStringLiteral("（基线处无皮带位置，本片不补偿）"));
     if (!p.xs.isEmpty())
         info << QStringLiteral("皮带行程 %1 脉冲%2").arg(p.xs.last(), 0, 'f', 0)
                     .arg(p.mmPerPulse > 0 ? QStringLiteral(" ≈ %1 mm").arg(p.xs.last() * p.mmPerPulse, 0, 'f', 1)
@@ -879,6 +887,11 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
     const double rawThk = rawThickAt(m.p, t);
     lines << QStringLiteral("thick(滤波后) = %1 mm%2").arg(fltThickAt(m.p, t), 0, 'f', 3)
                  .arg(std::isnan(rawThk) ? QString() : QStringLiteral("   原始 = %1 mm").arg(rawThk, 0, 'f', 3));
+    if (std::isfinite(t.bthick) || std::isfinite(t.tthick) || std::isfinite(t.bdev)) {
+        auto num = [](float v, int dec) { return std::isfinite(v) ? QString::number(v, 'f', dec) : QStringLiteral("—"); };
+        lines << QStringLiteral("皮带补偿 bthick = %1   仅轮廓表 tthick = %2 mm").arg(num(t.bthick, 3), num(t.tthick, 3));
+        lines << QStringLiteral("皮带进度 bpos = %1   轮廓偏差 bdev = %2 mm").arg(t.bpos >= 0 ? QString::number(t.bpos, 'f', 4) : QStringLiteral("—"), num(t.bdev, 4));
+    }
     lines << QString("lflt = %1   lraw = %2 mm").arg(t.lflt, 0, 'f', 2).arg(t.lraw, 0, 'f', 2);
     lines << QString("posLaser = %1 mm").arg(t.posLaser, 0, 'f', 1);
     QString needleFreq;
@@ -894,7 +907,8 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
                  .arg(QString::fromLatin1(sewStateName(t.state)), needleFreq);
     lines << QString("ch1/ch2/ch3 = %1/%2/%3   vfd = %4").arg(t.ch1).arg(t.ch2).arg(t.ch3).arg(t.vfd);
     lines << QString("pulse = %1").arg(t.pulse);
-    // 光标附近的事件：给出原始日志内容
+    // 光标附近的事件：给出原始日志内容（从 evStart 行起用事件色）
+    const int evStart = lines.size();
     for (const LogEvent &e : m.p.events) {
         if (std::fabs(m.xOfMs(e.ms) - pos.x()) <= 4.0 && lines.size() < 12)
             lines << QString("%1  %2").arg(fmtClock(e.ms), e.detail.left(90));
@@ -917,7 +931,7 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
     g.setBrush(QColor(255, 255, 255, 238));
     g.drawRoundedRect(box, 4, 4);
     for (int i = 0; i < lines.size(); ++i) {
-        g.setPen(i == 0 ? kColText : (i >= 7 ? QColor("#1864ab") : kColSubText));
+        g.setPen(i == 0 ? kColText : (i >= evStart ? QColor("#1864ab") : kColSubText));
         g.setFont(fontPx(g, 11, i == 0));
         g.drawText(QPointF(box.left() + 8, box.top() + 16 + i * lh), lines[i]);
     }
@@ -1023,6 +1037,17 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     if (v.showFlt)
         drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColThick, 1.4),
                    [&p](const Tick &t) { return fltThickAt(p, t); });
+    bool hasComp = false, hasTable = false;
+    for (const Tick &t : p.ticks) {
+        hasComp  = hasComp  || std::isfinite(t.bthick);
+        hasTable = hasTable || std::isfinite(t.tthick);
+    }
+    if (v.showComp && hasTable)
+        drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColTable, 1.0),
+                   [](const Tick &t) { return std::isfinite(t.tthick) ? (double)t.tthick : std::numeric_limits<double>::quiet_NaN(); });
+    if (v.showComp && hasComp)
+        drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColComp, 1.6),
+                   [](const Tick &t) { return std::isfinite(t.bthick) ? (double)t.bthick : std::numeric_limits<double>::quiet_NaN(); });
     for (const LogEvent &e : p.events)
         if (e.kind == EvPieceDone) drawPieceDone(g, gm, p, m.xOfMs(e.ms));
 
@@ -1035,6 +1060,12 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     if (v.showFlt)
         drawSeries(g, m, gm.panel[PanelLaser], r[PanelLaser], QPen(kColFlt, 1.3),
                    [](const Tick &t) { return (double)t.lflt; });
+    // 预期无料读数 = 基线 − 基线处偏差 + 当前位置偏差：空带段应与 lflt 重合，对不上说明轮廓表/零点有问题
+    const bool hasExpect = hasComp && p.baseMm >= 0 && std::isfinite(p.baseDev);
+    if (v.showComp && hasExpect)
+        drawSeries(g, m, gm.panel[PanelLaser], r[PanelLaser], QPen(kColComp, 1.4, Qt::DashLine), [&p](const Tick &t) {
+            return std::isfinite(t.bdev) ? p.baseMm - p.baseDev + (double)t.bdev : std::numeric_limits<double>::quiet_NaN();
+        });
 
     // ── 变频器频率 ──
     drawPanelFrame(g, m, gm.panel[PanelFreq], r[PanelFreq], QStringLiteral("频率 Hz"), kColFreq, xStep);
@@ -1065,12 +1096,15 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     QVector<QPair<QColor, QString>> lgThick;
     if (v.showFlt) lgThick.append(qMakePair(kColThick, QStringLiteral("滤波后厚度 thick (=base−lflt)")));
     if (v.showRaw && hasRawThick) lgThick.append(qMakePair(kColRaw, QStringLiteral("原始厚度 (=base−lraw)")));
+    if (v.showComp && hasComp) lgThick.append(qMakePair(kColComp, QStringLiteral("皮带补偿后厚度 bthick")));
+    if (v.showComp && hasTable) lgThick.append(qMakePair(kColTable, QStringLiteral("对比：只用轮廓表作基线 tthick")));
     if (v.showWin && !p.wins.isEmpty())
         lgThick.append(qMakePair(kColWin, QStringLiteral("WIN 窗口平均厚度(点在窗口末端)")));
     drawLegend(g, gm.panel[PanelThick], lgThick);
     QVector<QPair<QColor, QString>> lgLaser;
     if (v.showFlt) lgLaser.append(qMakePair(kColFlt, QStringLiteral("lflt 滤波后")));
     if (v.showRaw) lgLaser.append(qMakePair(kColRaw, QStringLiteral("lraw 原始")));
+    if (v.showComp && hasExpect) lgLaser.append(qMakePair(kColComp, QStringLiteral("预期无料读数（基线+皮带轮廓，虚线）")));
     drawLegend(g, gm.panel[PanelLaser], lgLaser);
     drawLegend(g, gm.panel[PanelFreq],
                {qMakePair(kColFreq, shift > 0

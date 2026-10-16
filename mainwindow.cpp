@@ -122,6 +122,12 @@ void MainWindow::buildUi()
     cbFlt->setStyleSheet("color:#1c7ed6;font-weight:bold");
     for (QCheckBox *cb : {cbWin, cbEv, cbRaw, cbFlt}) cb->setChecked(true);
     connect(cbFlt, &QCheckBox::toggled, m_plot, &PlotWidget::setShowFlt);
+    auto *cbComp = new QCheckBox(QStringLiteral("皮带补偿"));
+    cbComp->setStyleSheet("color:#0ca678;font-weight:bold");
+    cbComp->setChecked(true);
+    cbComp->setToolTip(QStringLiteral("bthick：用皮带轮廓表扣掉皮带起伏后的厚度（整体高度仍用每片基线）；\n"
+                                      "tthick：对比，只用轮廓表绝对值作基线；激光面板虚线：预期无料读数"));
+    connect(cbComp, &QCheckBox::toggled, m_plot, &PlotWidget::setShowComp);
     auto *cbAlign = new QCheckBox(QStringLiteral("频率对齐到针脚"));
     cbAlign->setChecked(true);
     cbAlign->setToolTip(QStringLiteral("把频率曲线前移“激光→针脚”距离：同一横坐标 = 同一段物料的厚度和它被缝时的频率"));
@@ -140,6 +146,7 @@ void MainWindow::buildUi()
     bar->addWidget(btnReset);
     bar->addWidget(cbRaw);
     bar->addWidget(cbFlt);
+    bar->addWidget(cbComp);
     bar->addWidget(cbAlign);
     bar->addWidget(cbWin);
     bar->addWidget(cbEv);

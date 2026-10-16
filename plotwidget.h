@@ -23,6 +23,7 @@ public slots:
     void setShowEvents(bool on);
     void setShowRaw(bool on);
     void setShowFlt(bool on);
+    void setShowComp(bool on);
     void setAlignFreq(bool on);
 
 protected:

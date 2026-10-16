@@ -19,6 +19,7 @@ public:
         bool   showEvents = true;
         bool   showRaw    = true;             // 原始曲线：base−lraw 厚度、lraw 激光
         bool   showFlt    = true;             // 滤波后曲线：thick 厚度、lflt 激光
+        bool   showComp   = true;             // 皮带补偿：bthick/tthick 厚度、激光面板的预期无料读数
         bool   alignFreq  = true;             // 频率曲线前移“激光→针脚”距离，使同一横坐标=同一段物料
         View() { for (auto &r : y) { r[0] = 0.0; r[1] = 1.0; } }
     };

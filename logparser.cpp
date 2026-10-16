@@ -75,6 +75,12 @@ bool parseTick(const QByteArray &body, Tick &t)
         else if (k == "freq")     t.freq = v.toFloat();
         else if (k == "row")      t.row = (qint16)v.toInt();
         else if (k == "pulse")    t.pulse = v.toUInt();
+        else if (k == "bpos")     t.bpos = v.toFloat();
+        else if (k == "bdev" || k == "bthick" || k == "tthick") {
+            bool ok = false;
+            const float f = v.toFloat(&ok);   // "-" = 不可用
+            (k == "bdev" ? t.bdev : k == "bthick" ? t.bthick : t.tthick) = ok ? f : std::numeric_limits<float>::quiet_NaN();
+        }
         else --found;
     }
     return found >= 6;
@@ -131,6 +137,8 @@ void parseHeader(const QByteArray &body, HeaderInfo &h)
     h.paifaLo     = kv.value("paifaLo").toInt();
     h.songfaHi    = kv.value("songfaHi").toInt();
     h.songfaLo    = kv.value("songfaLo").toInt();
+    h.beltProfile = QString::fromLatin1(kv.value("bprof"));
+    if (h.beltProfile == QStringLiteral("none")) h.beltProfile.clear();
     if (rowsAt >= 0) parseRows(body.mid(rowsAt + 6), h.rows);
     h.paramKey = QString::fromLatin1(body);
 }
@@ -362,6 +370,9 @@ bool parseLogFile(const QString &path, LogData &out, QString *error)
                     p.baseMm = kv.value("base").toDouble();
                     p.baseN  = kv.value("n").toInt();
                     p.baseReused = kv.contains("reused");
+                    bool ok = false;
+                    const double dev = kv.value("bdev").toDouble(&ok);   // "-" / 旧日志 → 不可用
+                    if (ev == "BASELINE") p.baseDev = ok ? dev : std::numeric_limits<double>::quiet_NaN();
                 }
             }
             addEvent(ms, EvEdge, QString::fromLatin1(ev), body);
