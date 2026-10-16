@@ -889,7 +889,10 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
                  .arg(std::isnan(rawThk) ? QString() : QStringLiteral("   原始 = %1 mm").arg(rawThk, 0, 'f', 3));
     if (std::isfinite(t.bthick) || std::isfinite(t.tthick) || std::isfinite(t.bdev)) {
         auto num = [](float v, int dec) { return std::isfinite(v) ? QString::number(v, 'f', dec) : QStringLiteral("—"); };
-        lines << QStringLiteral("皮带补偿 bthick = %1   仅轮廓表 tthick = %2 mm").arg(num(t.bthick, 3), num(t.tthick, 3));
+        lines << QStringLiteral("皮带补偿 bthick = %1   仅轮廓表 tthick = %2 mm   查表用：%3")
+                     .arg(num(t.bthick, 3), num(t.tthick, 3),
+                          t.lk == 'b' ? QStringLiteral("绿 bthick") : t.lk == 't' ? QStringLiteral("蓝 thick")
+                                      : t.lk == '-' ? QStringLiteral("—（不在测厚区间）") : QStringLiteral("蓝 thick（旧日志）"));
         lines << QStringLiteral("皮带进度 bpos = %1   轮廓偏差 bdev = %2 mm").arg(t.bpos >= 0 ? QString::number(t.bpos, 'f', 4) : QStringLiteral("—"), num(t.bdev, 4));
     }
     lines << QString("lflt = %1   lraw = %2 mm").arg(t.lflt, 0, 'f', 2).arg(t.lraw, 0, 'f', 2);

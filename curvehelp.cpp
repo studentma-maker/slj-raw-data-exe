@@ -28,16 +28,16 @@ QString curveHelpHtml()
                         "<tr style='background:#f1f3f5'><th>线</th><th>日志字段 / 公式</th><th>含义</th></tr>");
     h += QStringLiteral("<tr><td>%1 紫</td><td>基线 − lraw</td><td>用激光<b>原始</b>读数算的厚度：没滤波、没皮带补偿，噪声最大。"
                         "只在本片有基线时画（标题栏“基线 xx mm”）。</td></tr>").arg(swatch("#ae3ec9"));
-    h += QStringLiteral("<tr><td>%1 蓝</td><td>thick = 基线 − lflt</td><td>当前<b>实际参与测厚窗口和查表</b>的厚度：有滤波、没皮带补偿。"
+    h += QStringLiteral("<tr><td>%1 蓝</td><td>thick = 基线 − lflt</td><td><b>未补偿</b>厚度：有滤波、没皮带补偿。皮带补偿不可用的行（日志 lk=t）以及旧版日志，查表用的是它。"
                         "空带段会跟着皮带厚薄起伏（峰谷约 0.3mm）。</td></tr>").arg(swatch("#1c7ed6"));
     h += QStringLiteral("<tr><td>%1 绿</td><td>bthick = (基线 − 基线处偏差) − (lflt − 当前偏差)</td>"
-                        "<td><b>皮带补偿后厚度</b>：现场基线锚定整体高度 + 轮廓表扣掉皮带起伏。目前只写日志，不参与查表。"
+                        "<td><b>皮带补偿后厚度</b>：现场基线锚定整体高度 + 轮廓表扣掉皮带起伏。新版采集程序（HEADER blookup=1）在可用时（lk=b）用它查表。"
                         "详见下文第五节。</td></tr>").arg(swatch("#0ca678"));
     h += QStringLiteral("<tr><td>%1 黄</td><td>tthick = (表均值 + 当前偏差) − lflt</td>"
                         "<td><b>对比用</b>：完全用轮廓表的绝对值作基线，不用现场基线。整体高度漂移会原样进入厚度。"
                         "可在上方取消“仅轮廓表(黄)”隐藏。</td></tr>").arg(swatch("#f08c00"));
     h += QStringLiteral("<tr><td>%1 橙（带圆点）</td><td>WIN 行</td><td>滑动窗口平均厚度：点在窗口末端过激光的位置，"
-                        "下方条带是各窗口覆盖的范围。这是查表换行实际用的值（由蓝线的采样按 2mm 分格平均）。</td></tr>")
+                        "下方条带是各窗口覆盖的范围。这是查表换行实际用的值：每 2mm 一格，取各行实际参与查表的厚度（lk=b 为绿线，lk=t 为蓝线）平均。</td></tr>")
              .arg(swatch("#e8590c"));
     h += QStringLiteral("<tr><td>黑色竖线 + 浅灰底</td><td>PIECE_DONE</td><td>料尾已过激光，之后激光下没有本片物料；标签给出发料长度。</td></tr>"
                         "</table>");

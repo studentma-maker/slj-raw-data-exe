@@ -52,6 +52,7 @@ struct Tick {
     float   bdev     = std::numeric_limits<float>::quiet_NaN();   // 当前位置皮带轮廓偏差 mm（"-"/旧日志 = NaN）
     float   bthick   = std::numeric_limits<float>::quiet_NaN();   // 皮带补偿后厚度 mm（同上）
     float   tthick   = std::numeric_limits<float>::quiet_NaN();   // 对比：只用轮廓表绝对值作基线的厚度 mm
+    char    lk       = 0;       // 本行查表用的厚度：'b' 皮带补偿 / 't' 未补偿 / '-' 不在测厚区间 / 0 旧日志无此字段
     quint8  ch1 = 0, ch2 = 0, ch3 = 0, vfd = 0;
     quint8  state    = ST_IDLE;
 };

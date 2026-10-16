@@ -76,6 +76,7 @@ bool parseTick(const QByteArray &body, Tick &t)
         else if (k == "row")      t.row = (qint16)v.toInt();
         else if (k == "pulse")    t.pulse = v.toUInt();
         else if (k == "bpos")     t.bpos = v.toFloat();
+        else if (k == "lk")       t.lk = v.isEmpty() ? 0 : v.at(0);
         else if (k == "bdev" || k == "bthick" || k == "tthick") {
             bool ok = false;
             const float f = v.toFloat(&ok);   // "-" = 不可用
