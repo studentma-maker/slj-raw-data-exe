@@ -24,6 +24,7 @@ public slots:
     void setShowRaw(bool on);
     void setShowFlt(bool on);
     void setShowComp(bool on);
+    void setShowTable(bool on);
     void setAlignFreq(bool on);
 
 protected:

@@ -48,6 +48,7 @@ void PlotWidget::setShowEvents(bool on) { m_view.showEvents = on; update(); }
 void PlotWidget::setShowRaw(bool on)    { m_view.showRaw = on; update(); }
 void PlotWidget::setShowFlt(bool on)    { m_view.showFlt = on; update(); }
 void PlotWidget::setShowComp(bool on)   { m_view.showComp = on; update(); }
+void PlotWidget::setShowTable(bool on)  { m_view.showTable = on; update(); }
 void PlotWidget::setAlignFreq(bool on)  { m_view.alignFreq = on; update(); }
 
 void PlotWidget::paintEvent(QPaintEvent *)

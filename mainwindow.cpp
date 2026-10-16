@@ -4,6 +4,7 @@
 #include "piecechart.h"
 #include "plotwidget.h"
 #include "analysispage.h"
+#include "curvehelp.h"
 #include "profilewidget.h"
 
 #include <QAction>
@@ -12,6 +13,7 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QTabWidget>
+#include <QTextBrowser>
 #include <QImage>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -122,12 +124,17 @@ void MainWindow::buildUi()
     cbFlt->setStyleSheet("color:#1c7ed6;font-weight:bold");
     for (QCheckBox *cb : {cbWin, cbEv, cbRaw, cbFlt}) cb->setChecked(true);
     connect(cbFlt, &QCheckBox::toggled, m_plot, &PlotWidget::setShowFlt);
-    auto *cbComp = new QCheckBox(QStringLiteral("皮带补偿"));
+    auto *cbComp = new QCheckBox(QStringLiteral("皮带补偿(绿)"));
     cbComp->setStyleSheet("color:#0ca678;font-weight:bold");
     cbComp->setChecked(true);
-    cbComp->setToolTip(QStringLiteral("bthick：用皮带轮廓表扣掉皮带起伏后的厚度（整体高度仍用每片基线）；\n"
-                                      "tthick：对比，只用轮廓表绝对值作基线；激光面板虚线：预期无料读数"));
+    cbComp->setToolTip(QStringLiteral("bthick：用皮带轮廓表扣掉皮带起伏后的厚度（整体高度仍用每片现场基线）；\n"
+                                      "同时控制激光面板的“预期无料读数”虚线。详见“曲线说明”页"));
     connect(cbComp, &QCheckBox::toggled, m_plot, &PlotWidget::setShowComp);
+    auto *cbTable = new QCheckBox(QStringLiteral("仅轮廓表(黄)"));
+    cbTable->setStyleSheet("color:#f08c00;font-weight:bold");
+    cbTable->setChecked(true);
+    cbTable->setToolTip(QStringLiteral("tthick：对比用，完全用轮廓表绝对值作基线、不用现场基线，整体高度漂移会原样进入厚度"));
+    connect(cbTable, &QCheckBox::toggled, m_plot, &PlotWidget::setShowTable);
     auto *cbAlign = new QCheckBox(QStringLiteral("频率对齐到针脚"));
     cbAlign->setChecked(true);
     cbAlign->setToolTip(QStringLiteral("把频率曲线前移“激光→针脚”距离：同一横坐标 = 同一段物料的厚度和它被缝时的频率"));
@@ -147,17 +154,30 @@ void MainWindow::buildUi()
     bar->addWidget(cbRaw);
     bar->addWidget(cbFlt);
     bar->addWidget(cbComp);
+    bar->addWidget(cbTable);
     bar->addWidget(cbAlign);
     bar->addWidget(cbWin);
     bar->addWidget(cbEv);
     bar->addSpacing(12);
     bar->addWidget(hint, 1);
-    m_piecePage = new QWidget;
-    auto *pv = new QVBoxLayout(m_piecePage);
+    auto *curveTab = new QWidget;
+    auto *pv = new QVBoxLayout(curveTab);
     pv->setContentsMargins(0, 0, 0, 0);
     pv->setSpacing(2);
     pv->addLayout(bar);
     pv->addWidget(m_plot, 1);
+    // “曲线说明”子页面：每条曲线的含义，重点是绿线(bthick)/黄线(tthick)的区别与现场基线锚定
+    auto *help = new QTextBrowser;
+    help->setOpenExternalLinks(false);
+    help->setHtml(curveHelpHtml());
+    help->document()->setDocumentMargin(16);
+    auto *pieceTabs = new QTabWidget;
+    pieceTabs->addTab(curveTab, QStringLiteral("曲线"));
+    pieceTabs->addTab(help, QStringLiteral("曲线说明"));
+    m_piecePage = new QWidget;
+    auto *pageLay = new QVBoxLayout(m_piecePage);
+    pageLay->setContentsMargins(0, 0, 0, 0);
+    pageLay->addWidget(pieceTabs);
     m_stack->addWidget(m_piecePage);
 
     // 皮带激光轮廓对比页

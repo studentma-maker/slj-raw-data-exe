@@ -1042,7 +1042,7 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
         hasComp  = hasComp  || std::isfinite(t.bthick);
         hasTable = hasTable || std::isfinite(t.tthick);
     }
-    if (v.showComp && hasTable)
+    if (v.showTable && hasTable)
         drawSeries(g, m, gm.panel[PanelThick], r[PanelThick], QPen(kColTable, 1.0),
                    [](const Tick &t) { return std::isfinite(t.tthick) ? (double)t.tthick : std::numeric_limits<double>::quiet_NaN(); });
     if (v.showComp && hasComp)
@@ -1097,7 +1097,7 @@ void PieceChart::render(QPainter &g, const QRectF &rect, const Piece &p, const H
     if (v.showFlt) lgThick.append(qMakePair(kColThick, QStringLiteral("滤波后厚度 thick (=base−lflt)")));
     if (v.showRaw && hasRawThick) lgThick.append(qMakePair(kColRaw, QStringLiteral("原始厚度 (=base−lraw)")));
     if (v.showComp && hasComp) lgThick.append(qMakePair(kColComp, QStringLiteral("皮带补偿后厚度 bthick")));
-    if (v.showComp && hasTable) lgThick.append(qMakePair(kColTable, QStringLiteral("对比：只用轮廓表作基线 tthick")));
+    if (v.showTable && hasTable) lgThick.append(qMakePair(kColTable, QStringLiteral("对比：只用轮廓表作基线 tthick")));
     if (v.showWin && !p.wins.isEmpty())
         lgThick.append(qMakePair(kColWin, QStringLiteral("WIN 窗口平均厚度(点在窗口末端)")));
     drawLegend(g, gm.panel[PanelThick], lgThick);
