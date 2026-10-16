@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d5a94"/>
+      <stop offset="1" stop-color="#0b2240"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f9fc"/>
+      <stop offset="1" stop-color="#cdd9e6"/>
+    </linearGradient>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9a2e" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ff9a2e" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+
+  <!-- 图表面板（缝纫机台板 = 数据屏） -->
+  <rect x="22" y="128" width="212" height="100" rx="14" fill="#0e2a4c" stroke="#5f8fc0" stroke-width="3"/>
+  <!-- 网格 -->
+  <g stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5">
+    <line x1="40" y1="152" x2="220" y2="152"/>
+    <line x1="40" y1="174" x2="220" y2="174"/>
+    <line x1="40" y1="196" x2="220" y2="196"/>
+  </g>
+  <!-- 柱状图 -->
+  <g fill="#3d7fc2" opacity="0.55">
+    <rect x="112" y="186" width="12" height="28" rx="2"/>
+    <rect x="132" y="176" width="12" height="38" rx="2"/>
+    <rect x="152" y="192" width="12" height="22" rx="2"/>
+    <rect x="172" y="168" width="12" height="46" rx="2"/>
+    <rect x="192" y="180" width="12" height="34" rx="2"/>
+  </g>
+  <!-- 坐标轴 -->
+  <path d="M40 140 V214 H222" fill="none" stroke="#9fc0e2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 主曲线面积 -->
+  <path d="M40 200 C60 196 70 168 92 172 S124 196 144 176 S180 140 220 146 V214 H40 Z" fill="url(#area)"/>
+  <!-- 三条数据曲线 -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40 200 C60 196 70 168 92 172 S124 196 144 176 S180 140 220 146" stroke="#ffa733" stroke-width="5"/>
+    <path d="M40 184 C64 176 76 192 100 190 S136 158 160 162 S196 184 220 170" stroke="#3fd3ff" stroke-width="4"/>
+    <path d="M40 208 C66 206 84 196 108 202 S150 200 170 192 S204 196 220 188" stroke="#62e597" stroke-width="4"/>
+  </g>
+  <!-- 数据点 -->
+  <g fill="#0e2a4c" stroke="#ffa733" stroke-width="3">
+    <circle cx="92" cy="172" r="4.5"/>
+    <circle cx="144" cy="176" r="4.5"/>
+    <circle cx="220" cy="146" r="5"/>
+  </g>
+
+  <!-- 缝纫机机身 -->
+  <path d="M62 26 H198 Q214 26 214 42 V128 H180 V66 H108 V86 Q108 96 98 96 H62 Q50 96 50 84 V38 Q50 26 62 26 Z"
+        fill="url(#body)"/>
+  <rect x="62" y="35" width="140" height="5" rx="2.5" fill="#ffffff" opacity="0.9"/>
+  <!-- 自动化齿轮 -->
+  <g transform="translate(197 98)">
+    <g fill="#1d5a94">
+      <circle r="11"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1" transform="rotate(60)"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1" transform="rotate(120)"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1" transform="rotate(180)"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1" transform="rotate(240)"/>
+      <rect x="-3" y="-16" width="6" height="8" rx="1" transform="rotate(300)"/>
+    </g>
+    <circle r="4.5" fill="#e3eaf3"/>
+  </g>
+  <!-- 三联机针 -->
+  <g stroke="#e3eaf3" stroke-width="4" stroke-linecap="round">
+    <line x1="62" y1="96" x2="62" y2="114"/>
+    <line x1="78" y1="96" x2="78" y2="114"/>
+    <line x1="94" y1="96" x2="94" y2="114"/>
+  </g>
+  <!-- 针尖线迹（三色，对应三条曲线） -->
+  <g stroke-width="3" stroke-linecap="round">
+    <line x1="62" y1="116" x2="62" y2="122" stroke="#3fd3ff"/>
+    <line x1="78" y1="116" x2="78" y2="122" stroke="#ffa733"/>
+    <line x1="94" y1="116" x2="94" y2="122" stroke="#62e597"/>
+  </g>
+</svg>
