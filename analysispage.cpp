@@ -134,8 +134,9 @@ bool PairMatrixView::cellAt(const QPointF &p, int &which, int &a, int &b) const
     for (int w = 0; w < 2; ++w) {
         if (!L.mat[w].contains(p)) continue;
         which = w;
-        b = std::min(m_an->vis.size() - 1, int((p.x() - L.mat[w].left()) / L.cell));
-        a = std::min(m_an->vis.size() - 1, int((p.y() - L.mat[w].top()) / L.cell));
+        const int last = int(m_an->vis.size()) - 1;   // Qt 6 的 size() 是 qsizetype，与 int 混用 std::min 无法推导
+        b = std::min(last, int((p.x() - L.mat[w].left()) / L.cell));
+        a = std::min(last, int((p.y() - L.mat[w].top()) / L.cell));
         return true;
     }
     return false;

@@ -83,7 +83,7 @@ double bestShift(const QVector<double> &a, const QVector<double> &b)
 
 double profileCorr(const QVector<double> &a, const QVector<double> &b)
 {
-    const int n = std::min(a.size(), b.size());
+    const int n = int(std::min(a.size(), b.size()));
     if (n < 2) return std::numeric_limits<double>::quiet_NaN();
     double ma = 0, mb = 0;
     for (int i = 0; i < n; ++i) { ma += a[i]; mb += b[i]; }
