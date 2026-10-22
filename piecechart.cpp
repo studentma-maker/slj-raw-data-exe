@@ -945,7 +945,8 @@ void drawHover(QPainter &g, const Mapper &m, const QRectF &rect, const QPointF &
 QColor PieceChart::rowColor(int row)
 {
     static const char *const c[] = {"#adb5bd", "#4c6ef5", "#228be6", "#15aabf", "#12b886", "#40c057",
-                                    "#82c91e", "#fab005", "#fd7e14", "#fa5252", "#be4bdb"};
+                                    "#82c91e", "#fab005", "#fd7e14", "#fa5252", "#be4bdb", "#7950f2",
+                                    "#e64980", "#a61e4d", "#5c940d", "#0b7285"};   // 16 色：默认行 + 15 个可配置行各不相同
     const int n = (int)(sizeof(c) / sizeof(c[0]));
     return QColor(c[((row % n) + n) % n]);
 }

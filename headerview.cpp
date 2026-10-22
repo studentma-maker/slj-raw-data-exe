@@ -1,9 +1,11 @@
 #include "headerview.h"
 
 #include <QFontMetricsF>
+#include <QPicture>
 #include <QPolygonF>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -50,9 +52,8 @@ void dimension(QPainter &g, double xa, double xb, double y, const QString &text,
 }
 
 double drawTable(QPainter &g, double x, double y, const QVector<double> &colW, const QStringList &head,
-                 const QVector<QStringList> &rows, const QVector<QColor> &rowBg)
+                 const QVector<QStringList> &rows, const QVector<QColor> &rowBg, double rh = 25.0)
 {
-    const double rh = 25.0;
     double totalW = 0;
     for (double w : colW) totalW += w;
 
@@ -249,10 +250,13 @@ double renderHeader(QPainter &g, const QRectF &rect, const HeaderInfo &h, const 
         bg << (r.enabled ? QColor("#e6fcf5") : QColor());
     }
     const double tw = R - L;
+    // 16 行查表按 25px 行高排不进一页 A4 横向 PDF：页面剩余高度不够时压缩行高（不小于 18px，12px 字仍可读）。
+    // 屏幕上 HeaderView 会按完整高度撑开，不受影响
+    const double rowH = std::max(18.0, std::min(25.0, (rect.bottom() - 16 - y) / (rows.size() + 1)));
     y = drawTable(g, L, y, {tw * 0.13, tw * 0.12, tw * 0.20, tw * 0.11, tw * 0.11, tw * 0.11, tw * 0.11, tw * 0.11},
                   QStringList() << QStringLiteral("行号") << QStringLiteral("状态") << QStringLiteral("厚度范围 (mm)")
                                 << "V1" << "V2" << "V3" << "V4" << "V5",
-                  rows, bg);
+                  rows, bg, rowH);
     y += 16;
 
     g.restore();
@@ -268,6 +272,14 @@ void HeaderView::setHeader(const HeaderInfo *h, const QString &title)
 {
     m_h = h;
     m_title = title;
+    // 查表行数随日志而变（现为 16 行），按实际内容高度撑开，否则超出固定最小高度的行在滚动区里被截掉
+    int contentH = 900;
+    if (m_h) {
+        QPicture pic;
+        QPainter p(&pic);
+        contentH = std::max(contentH, (int)std::ceil(renderHeader(p, QRectF(0, 0, width(), 100000), *m_h, m_title)));
+    }
+    setMinimumHeight(contentH);
     update();
 }
 
