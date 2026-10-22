@@ -236,7 +236,9 @@ double renderHeader(QPainter &g, const QRectF &rect, const HeaderInfo &h, const 
     y = std::max(yb, yt + 44) + 8;
 
     // ───────── 3. 查表行完整表 ─────────
-    sectionTitle(g, L, y, QStringLiteral("厚度查表（全部 %1 行，V1~V5 为各阶段变频器频率 Hz）").arg(h.rows.size()));
+    const QString tableName = h.tableNo > 0 ? QStringLiteral(" 表%1").arg(h.tableNo) : QString();   // 旧日志无 table= 时不显示
+    sectionTitle(g, L, y, QStringLiteral("厚度查表%1（全部 %2 行，V1~V5 为各阶段变频器频率 Hz）")
+                              .arg(tableName).arg(h.rows.size()));
     y += 28;
     QVector<QStringList> rows;
     QVector<QColor> bg;

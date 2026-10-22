@@ -138,6 +138,7 @@ void parseHeader(const QByteArray &body, HeaderInfo &h)
     h.paifaLo     = kv.value("paifaLo").toInt();
     h.songfaHi    = kv.value("songfaHi").toInt();
     h.songfaLo    = kv.value("songfaLo").toInt();
+    h.tableNo     = kv.value("table").toInt();
     h.beltProfile = QString::fromLatin1(kv.value("bprof"));
     if (h.beltProfile == QStringLiteral("none")) h.beltProfile.clear();
     if (rowsAt >= 0) parseRows(body.mid(rowsAt + 6), h.rows);

@@ -29,6 +29,7 @@ struct HeaderInfo {
     int    paifaLo     = 0;
     int    songfaHi    = 0;
     int    songfaLo    = 0;
+    int    tableNo     = 0;         // table=：本次武装生效发料绑定的查表编号（表1~表N），0 = 旧日志无此字段
     QString beltProfile;            // bprof=：本次武装加载的皮带激光轮廓表采集时间，none/空 = 未加载（无皮带补偿）
     QVector<LookupRow> rows;
     QString      paramKey;          // 去掉时间戳后的原始内容，用于判断参数是否变化
